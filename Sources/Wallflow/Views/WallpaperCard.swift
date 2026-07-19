@@ -13,6 +13,7 @@ struct WallpaperCard: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       thumbnail
+        .frame(maxWidth: .infinity)
         .frame(height: 152)
         .contentShape(Rectangle())
         .onTapGesture(count: 2, perform: onShow)
@@ -56,6 +57,7 @@ struct WallpaperCard: View {
       }
       .padding(12)
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
     .background(Color(nsColor: .controlBackgroundColor))
     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     .overlay {
@@ -104,16 +106,20 @@ private struct WallpaperThumbnail: View {
   @State private var loadedImageURL: URL?
 
   var body: some View {
-    Group {
-      if let image {
-        Image(nsImage: image)
-          .resizable()
-          .scaledToFill()
-      } else {
-        Image(systemName: "photo")
-          .font(.system(size: 32))
-          .foregroundStyle(.secondary)
+    GeometryReader { geometry in
+      Group {
+        if let image {
+          Image(nsImage: image)
+            .resizable()
+            .scaledToFill()
+        } else {
+          Image(systemName: "photo")
+            .font(.system(size: 32))
+            .foregroundStyle(.secondary)
+        }
       }
+      .frame(width: geometry.size.width, height: geometry.size.height)
+      .clipped()
     }
     .task(id: imageURL) {
       guard loadedImageURL != imageURL else { return }
