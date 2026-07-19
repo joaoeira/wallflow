@@ -14,6 +14,13 @@ struct WallpaperCard: View {
     VStack(alignment: .leading, spacing: 0) {
       thumbnail
         .frame(height: 152)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2, perform: onShow)
+        .help(
+          item.isEnabled
+            ? "Double-click to show this wallpaper now"
+            : "Enable this wallpaper before showing it"
+        )
 
       HStack(spacing: 10) {
         VStack(alignment: .leading, spacing: 3) {
@@ -73,15 +80,7 @@ struct WallpaperCard: View {
       Rectangle()
         .fill(Color.secondary.opacity(0.12))
 
-      if let image = NSImage(contentsOf: imageURL) {
-        Image(nsImage: image)
-          .resizable()
-          .scaledToFill()
-      } else {
-        Image(systemName: "photo")
-          .font(.system(size: 32))
-          .foregroundStyle(.secondary)
-      }
+      WallpaperThumbnail(imageURL: imageURL)
     }
     .clipped()
     .overlay(alignment: .topLeading) {
@@ -91,8 +90,36 @@ struct WallpaperCard: View {
           .padding(.horizontal, 9)
           .padding(.vertical, 5)
           .background(.ultraThickMaterial, in: Capsule())
-          .padding(9)
+          .padding(.leading, 12)
+          .padding(.top, 16)
       }
+    }
+  }
+}
+
+private struct WallpaperThumbnail: View {
+  let imageURL: URL
+
+  @State private var image: NSImage?
+  @State private var loadedImageURL: URL?
+
+  var body: some View {
+    Group {
+      if let image {
+        Image(nsImage: image)
+          .resizable()
+          .scaledToFill()
+      } else {
+        Image(systemName: "photo")
+          .font(.system(size: 32))
+          .foregroundStyle(.secondary)
+      }
+    }
+    .task(id: imageURL) {
+      guard loadedImageURL != imageURL else { return }
+      loadedImageURL = imageURL
+      image = nil
+      image = await WallpaperThumbnailCache.shared.image(for: imageURL)
     }
   }
 }

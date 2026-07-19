@@ -94,6 +94,14 @@ struct SettingsView: View {
               .labelsHidden()
               .frame(width: 180)
             }
+
+            Divider()
+
+            settingsRow("Smooth transitions") {
+              Toggle("Smooth transitions", isOn: $controller.settings.smoothTransitions)
+                .labelsHidden()
+                .toggleStyle(.switch)
+            }
           }
           .padding(6)
         } label: {
@@ -103,6 +111,14 @@ struct SettingsView: View {
 
         GroupBox {
           VStack(spacing: 14) {
+            settingsRow("Show menu-bar icon") {
+              Toggle("Show menu-bar icon", isOn: $controller.settings.showsMenuBarIcon)
+                .labelsHidden()
+                .toggleStyle(.switch)
+            }
+
+            Divider()
+
             settingsRow("Open Wallflow at login") {
               Toggle(
                 "Open Wallflow at login",
@@ -130,7 +146,7 @@ struct SettingsView: View {
         }
 
         Text(
-          "Wallflow stays available in the menu bar when its window is closed. Rotation stops when the app quits."
+          "Wallflow keeps rotating after its windows close. Reopen it from the menu bar when visible, or from the Dock. Rotation stops when the app quits."
         )
         .font(.footnote)
         .foregroundStyle(.secondary)

@@ -8,11 +8,14 @@ Wallflow is a small, native macOS utility for curating and automatically rotatin
 - Keep reliable managed copies in `~/Library/Application Support/Wallflow`.
 - Enable or exclude individual images without deleting them.
 - Delete managed copies without touching the original source files.
+- Double-click an enabled thumbnail to show it immediately and restart the rotation interval.
 - Rotate sequentially or in shuffled order without immediate repeats.
 - Choose intervals from one minute to one day.
 - Select fill, fit, stretch, or center presentation.
 - Apply wallpapers to every display or only the main display.
+- Fade smoothly between wallpapers using a desktop-level transition overlay.
 - Change to the next wallpaper from the menu bar or with Command-].
+- Hide the menu-bar item while leaving Wallflow running and accessible from the Dock.
 - Start Wallflow automatically at login.
 
 ## Run the app

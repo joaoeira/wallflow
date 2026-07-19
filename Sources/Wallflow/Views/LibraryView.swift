@@ -59,28 +59,33 @@ struct LibraryView: View {
         ContentUnavailableView.search(text: searchText)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
-        ScrollView {
-          RotationStatusView(controller: controller)
-            .padding(.bottom, 16)
+        GeometryReader { geometry in
+          ScrollView {
+            RotationStatusView(controller: controller)
+              .padding(.bottom, 16)
 
-          LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 220, maximum: 300), spacing: 16)],
-            spacing: 16
-          ) {
-            ForEach(visibleItems) { item in
-              WallpaperCard(
-                item: item,
-                imageURL: imageURL(for: item),
-                isCurrent: item.id == controller.currentItemID,
-                onToggle: { controller.setEnabled($0, for: item) },
-                onShow: { controller.show(item) },
-                onReveal: { controller.reveal(item) },
-                onDelete: { pendingDelete = item }
-              )
+            LazyVGrid(
+              columns: gridColumns(for: max(0, geometry.size.width - 48)),
+              alignment: .leading,
+              spacing: 16
+            ) {
+              ForEach(visibleItems) { item in
+                WallpaperCard(
+                  item: item,
+                  imageURL: imageURL(for: item),
+                  isCurrent: item.id == controller.currentItemID,
+                  onToggle: { controller.setEnabled($0, for: item) },
+                  onShow: { controller.show(item) },
+                  onReveal: { controller.reveal(item) },
+                  onDelete: { pendingDelete = item }
+                )
+                .frame(maxWidth: .infinity)
+              }
             }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
           }
+          .contentMargins(24, for: .scrollContent)
         }
-        .contentMargins(24, for: .scrollContent)
       }
     }
     .background(isDropTargeted ? Color.accentColor.opacity(0.08) : Color.clear)
@@ -166,5 +171,25 @@ struct LibraryView: View {
     controller.libraryDirectoryURL
       .appendingPathComponent("Images", isDirectory: true)
       .appendingPathComponent(item.fileName)
+  }
+
+  private func gridColumns(for availableWidth: CGFloat) -> [GridItem] {
+    let minimumCardWidth: CGFloat = 220
+    let maximumCardWidth: CGFloat = 300
+    let spacing: CGFloat = 16
+    let fittingColumnCount = max(
+      1,
+      Int((availableWidth + spacing) / (minimumCardWidth + spacing))
+    )
+    let columnCount = min(visibleItems.count, fittingColumnCount)
+
+    return Array(
+      repeating: GridItem(
+        .flexible(minimum: minimumCardWidth, maximum: maximumCardWidth),
+        spacing: spacing,
+        alignment: .top
+      ),
+      count: columnCount
+    )
   }
 }

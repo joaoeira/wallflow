@@ -25,7 +25,7 @@ struct WallflowApp: App {
       }
     }
 
-    MenuBarExtra {
+    MenuBarExtra(isInserted: menuBarIconBinding) {
       MenuBarView(controller: controller)
     } label: {
       Label(
@@ -40,5 +40,15 @@ struct WallflowApp: App {
       SettingsView(controller: controller)
         .frame(width: 560, height: 540)
     }
+  }
+
+  private var menuBarIconBinding: Binding<Bool> {
+    Binding(
+      get: { controller.settings.showsMenuBarIcon },
+      set: { isVisible in
+        guard controller.settings.showsMenuBarIcon != isVisible else { return }
+        controller.settings.showsMenuBarIcon = isVisible
+      }
+    )
   }
 }

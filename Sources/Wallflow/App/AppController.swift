@@ -27,6 +27,7 @@ final class AppController: ObservableObject {
   let libraryDirectoryURL: URL
 
   private let defaults: UserDefaults
+  private let transitionCoordinator = WallpaperTransitionCoordinator()
   private var libraryStore: WallpaperLibraryStore?
   private var timer: Timer?
   private var hasStarted = false
@@ -197,10 +198,13 @@ final class AppController: ObservableObject {
 
   private func apply(item: WallpaperItem, from store: WallpaperLibraryStore) {
     do {
-      try WallpaperSetter.apply(
+      let previousImageURL = currentItem.map(store.fileURL(for:))
+      try transitionCoordinator.apply(
         imageURL: store.fileURL(for: item),
+        previousImageURL: previousImageURL,
         scaling: settings.scaling,
-        target: settings.displayTarget
+        target: settings.displayTarget,
+        animated: settings.smoothTransitions
       )
       currentItemID = item.id
       persistCurrentItem()
@@ -232,10 +236,13 @@ final class AppController: ObservableObject {
     let presentationChanged =
       settings.scaling != oldSettings.scaling
       || settings.displayTarget != oldSettings.displayTarget
+    let scheduleChanged =
+      settings.rotationEnabled != oldSettings.rotationEnabled
+      || settings.intervalSeconds != oldSettings.intervalSeconds
 
     if presentationChanged, let currentItem, let libraryStore {
       apply(item: currentItem, from: libraryStore)
-    } else {
+    } else if scheduleChanged {
       scheduleNextChange()
     }
   }

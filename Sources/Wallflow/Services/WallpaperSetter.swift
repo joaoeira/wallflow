@@ -7,13 +7,7 @@ enum WallpaperSetter {
     scaling: WallpaperScaling,
     target: DisplayTarget
   ) throws {
-    let screens: [NSScreen]
-    switch target {
-    case .allDisplays:
-      screens = NSScreen.screens
-    case .mainDisplay:
-      screens = NSScreen.main.map { [$0] } ?? []
-    }
+    let screens = screens(for: target)
 
     let options: [NSWorkspace.DesktopImageOptionKey: Any] = [
       .imageScaling: NSNumber(value: scaling.imageScaling.rawValue),
@@ -27,6 +21,15 @@ enum WallpaperSetter {
         for: screen,
         options: options
       )
+    }
+  }
+
+  static func screens(for target: DisplayTarget) -> [NSScreen] {
+    switch target {
+    case .allDisplays:
+      NSScreen.screens
+    case .mainDisplay:
+      NSScreen.main.map { [$0] } ?? []
     }
   }
 }
