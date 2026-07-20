@@ -68,7 +68,12 @@ final class WallpaperTransitionCoordinator {
     animationSuppressedUntil = now.addingTimeInterval(fadeDuration)
     for window in windows {
       window.orderFrontRegardless()
+      window.displayIfNeeded()
     }
+    // Layer-backed content otherwise commits at the end of the runloop turn,
+    // after setDesktopImageURL below — letting the system's swap flash through
+    // before the overlay's first frame reaches the screen.
+    CATransaction.flush()
 
     do {
       try WallpaperSetter.apply(imageURL: imageURL, scaling: scaling, target: target)
