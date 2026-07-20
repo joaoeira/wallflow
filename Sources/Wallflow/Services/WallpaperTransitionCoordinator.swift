@@ -1,18 +1,17 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import QuartzCore
 
 @MainActor
 final class WallpaperTransitionCoordinator {
   private final class ActiveTransition {
     let id = UUID()
     let windows: [NSWindow]
-    let startedAt: TimeInterval
-    var timer: Timer?
+    var teardownTimer: Timer?
 
-    init(windows: [NSWindow], startedAt: TimeInterval) {
+    init(windows: [NSWindow]) {
       self.windows = windows
-      self.startedAt = startedAt
     }
   }
 
@@ -20,6 +19,10 @@ final class WallpaperTransitionCoordinator {
   private var animationSuppressedUntil = Date.distantPast
 
   private let fadeDuration: TimeInterval = 0.65
+  // The system applies the desktop image asynchronously, some time after
+  // setDesktopImageURL returns. The overlay stays up this long after the fade
+  // so the swap underneath finishes before the desktop becomes visible again.
+  private let settleDuration: TimeInterval = 0.6
 
   func apply(
     imageURL: URL,
@@ -45,19 +48,22 @@ final class WallpaperTransitionCoordinator {
       mayAnimate,
       let previousImageURL,
       previousImageURL != imageURL,
-      let previousImage = NSImage(contentsOf: previousImageURL)
+      let previousImage = NSImage(contentsOf: previousImageURL),
+      let newImage = NSImage(contentsOf: imageURL)
     else {
       try WallpaperSetter.apply(imageURL: imageURL, scaling: scaling, target: target)
       return
     }
 
     let windows = WallpaperSetter.screens(for: target).map { screen in
-      makeOverlayWindow(for: screen, image: previousImage, scaling: scaling)
+      makeOverlayWindow(
+        for: screen,
+        outgoingImage: previousImage,
+        incomingImage: newImage,
+        scaling: scaling
+      )
     }
-    let transition = ActiveTransition(
-      windows: windows,
-      startedAt: ProcessInfo.processInfo.systemUptime
-    )
+    let transition = ActiveTransition(windows: windows)
     activeTransition = transition
     animationSuppressedUntil = now.addingTimeInterval(fadeDuration)
     for window in windows {
@@ -72,31 +78,38 @@ final class WallpaperTransitionCoordinator {
     }
 
     let transitionID = transition.id
-    let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+    NSAnimationContext.runAnimationGroup { context in
+      context.duration = fadeDuration
+      context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+      for window in windows {
+        (window.contentView as? WallpaperCrossfadeView)?
+          .incomingView.animator().alphaValue = 1
+      }
+    } completionHandler: { [weak self] in
       MainActor.assumeIsolated {
-        self?.advanceTransition(id: transitionID, timer: timer)
+        self?.scheduleTeardown(id: transitionID)
       }
     }
-    timer.tolerance = 1.0 / 240.0
-    transition.timer = timer
-    RunLoop.main.add(timer, forMode: .common)
   }
 
   private func makeOverlayWindow(
     for screen: NSScreen,
-    image: NSImage,
+    outgoingImage: NSImage,
+    incomingImage: NSImage,
     scaling: WallpaperScaling
   ) -> NSWindow {
+    // screen.frame is in global coordinates; the screen-relative initializer
+    // variant would double-offset the window on secondary displays.
     let window = NSWindow(
       contentRect: screen.frame,
       styleMask: [.borderless],
       backing: .buffered,
-      defer: true,
-      screen: screen
+      defer: true
     )
-    window.contentView = WallpaperOverlayView(
+    window.contentView = WallpaperCrossfadeView(
       frame: NSRect(origin: .zero, size: screen.frame.size),
-      image: image,
+      outgoingImage: outgoingImage,
+      incomingImage: incomingImage,
       scaling: scaling
     )
     window.level = NSWindow.Level(
@@ -112,32 +125,32 @@ final class WallpaperTransitionCoordinator {
     return window
   }
 
+  private func scheduleTeardown(id: UUID) {
+    guard let transition = activeTransition, transition.id == id else { return }
+
+    let timer = Timer(timeInterval: settleDuration, repeats: false) { [weak self] _ in
+      MainActor.assumeIsolated {
+        guard
+          let self,
+          let transition = self.activeTransition,
+          transition.id == id
+        else { return }
+        self.tearDown(transition)
+      }
+    }
+    timer.tolerance = 0.1
+    transition.teardownTimer = timer
+    RunLoop.main.add(timer, forMode: .common)
+  }
+
   private func tearDownActiveTransition() {
     guard let activeTransition else { return }
     tearDown(activeTransition)
   }
 
-  private func advanceTransition(id: UUID, timer: Timer) {
-    guard let transition = activeTransition, transition.id == id else {
-      timer.invalidate()
-      return
-    }
-
-    let elapsed = ProcessInfo.processInfo.systemUptime - transition.startedAt
-    let progress = min(1, max(0, elapsed / fadeDuration))
-    let easedProgress = progress * progress * (3 - 2 * progress)
-    for window in transition.windows {
-      window.alphaValue = 1 - easedProgress
-    }
-
-    if progress >= 1 {
-      tearDown(transition)
-    }
-  }
-
   private func tearDown(_ transition: ActiveTransition) {
-    transition.timer?.invalidate()
-    transition.timer = nil
+    transition.teardownTimer?.invalidate()
+    transition.teardownTimer = nil
     for window in transition.windows {
       window.alphaValue = 0
       window.orderOut(nil)
@@ -150,7 +163,37 @@ final class WallpaperTransitionCoordinator {
   }
 }
 
-private final class WallpaperOverlayView: NSView {
+private final class WallpaperCrossfadeView: NSView {
+  let incomingView: WallpaperImageView
+
+  init(
+    frame: NSRect,
+    outgoingImage: NSImage,
+    incomingImage: NSImage,
+    scaling: WallpaperScaling
+  ) {
+    let contentBounds = NSRect(origin: .zero, size: frame.size)
+    let outgoing = WallpaperImageView(
+      frame: contentBounds, image: outgoingImage, scaling: scaling
+    )
+    let incoming = WallpaperImageView(
+      frame: contentBounds, image: incomingImage, scaling: scaling
+    )
+    incomingView = incoming
+    super.init(frame: frame)
+    wantsLayer = true
+    addSubview(outgoing)
+    addSubview(incoming)
+    incoming.alphaValue = 0
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) {
+    nil
+  }
+}
+
+private final class WallpaperImageView: NSView {
   private let image: NSImage
   private let scaling: WallpaperScaling
 
