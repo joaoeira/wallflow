@@ -85,7 +85,7 @@ struct LibraryView: View {
                   item: item,
                   imageURL: controller.imageURL(for: item),
                   isCurrent: item.id == controller.currentItemID,
-                  onToggle: { controller.setEnabled($0, for: item) },
+                  onToggle: { controller.setEnabled($0, for: [item.id]) },
                   onShow: { controller.show(item) },
                   onReveal: { controller.reveal(item) },
                   onDelete: { pendingDelete = item }
@@ -114,7 +114,7 @@ struct LibraryView: View {
     ) {
       Button("Delete Photo", role: .destructive) {
         if let pendingDelete {
-          controller.delete(pendingDelete)
+          controller.delete([pendingDelete.id])
         }
         pendingDelete = nil
       }

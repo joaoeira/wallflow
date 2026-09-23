@@ -42,9 +42,9 @@ final class AppControllerTests: XCTestCase {
     let other = try XCTUnwrap(controller.items.first { $0.id != controller.currentItemID })
     app.now += 10 * 60
 
-    controller.setEnabled(false, for: other)
-    controller.setEnabled(true, for: other)
-    controller.delete(other)
+    controller.setEnabled(false, for: [other.id])
+    controller.setEnabled(true, for: [other.id])
+    controller.delete([other.id])
 
     XCTAssertEqual(controller.nextChangeDate, countdown)
     XCTAssertEqual(app.applier.applications.count, 1)
@@ -55,10 +55,10 @@ final class AppControllerTests: XCTestCase {
     let controller = app.launch()
     controller.importImages(at: [try app.makeImageFile(named: "Beach")])
     let beach = try XCTUnwrap(controller.currentItem)
-    controller.setEnabled(false, for: beach)
+    controller.setEnabled(false, for: [beach.id])
     XCTAssertNil(controller.nextChangeDate)
 
-    controller.setEnabled(true, for: beach)
+    controller.setEnabled(true, for: [beach.id])
 
     XCTAssertEqual(controller.currentItemID, beach.id)
     XCTAssertEqual(app.applier.applications.count, 2)
@@ -75,12 +75,30 @@ final class AppControllerTests: XCTestCase {
     controller.rotateNow()
     XCTAssertEqual(controller.currentItem?.displayName, "B")
 
-    controller.setEnabled(false, for: try XCTUnwrap(controller.currentItem))
+    controller.setEnabled(false, for: [try XCTUnwrap(controller.currentItemID)])
     XCTAssertEqual(controller.currentItem?.displayName, "C")
 
-    controller.delete(try XCTUnwrap(controller.currentItem))
+    controller.delete([try XCTUnwrap(controller.currentItemID)])
     XCTAssertEqual(controller.currentItem?.displayName, "D")
     XCTAssertEqual(controller.items.map(\.displayName), ["A", "B", "D"])
+  }
+
+  func testRemovingSeveralPhotosIncludingTheCurrentOneSkipsPastAllOfThem() throws {
+    let app = try TestApp(testCase: self)
+    let controller = app.launch()
+    controller.settings.order = .sequential
+    controller.importImages(
+      at: try ["A", "B", "C", "D", "E", "F"].map { try app.makeImageFile(named: $0) }
+    )
+    let ids = Dictionary(uniqueKeysWithValues: controller.items.map { ($0.displayName, $0.id) })
+
+    controller.setEnabled(false, for: [ids["A"]!, ids["B"]!])
+    XCTAssertEqual(controller.currentItem?.displayName, "C")
+
+    controller.delete([ids["C"]!, ids["D"]!])
+    XCTAssertEqual(controller.currentItem?.displayName, "E")
+    XCTAssertEqual(controller.items.map(\.displayName), ["A", "B", "E", "F"])
+    XCTAssertEqual(app.applier.applications.count, 3)
   }
 
   func testRelaunchingResumesTheSavedCountdown() throws {

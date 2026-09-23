@@ -66,10 +66,35 @@ final class WallpaperLibraryStoreTests: XCTestCase {
     let library = try WallpaperLibraryStore(rootDirectory: libraryURL)
     let item = try XCTUnwrap(library.importImages(at: [sourceURL]).first)
 
-    try library.setEnabled(false, for: item.id)
+    try library.setEnabled(false, for: [item.id])
 
     let reloaded = try WallpaperLibraryStore(rootDirectory: libraryURL)
     XCTAssertEqual(reloaded.items.first?.isEnabled, false)
+  }
+
+  func testDeletingSeveralItemsRemovesAllTheirFiles() throws {
+    let fileManager = FileManager.default
+    let testRoot = fileManager.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try fileManager.createDirectory(at: testRoot, withIntermediateDirectories: true)
+    defer { try? fileManager.removeItem(at: testRoot) }
+    let sources = try ["One", "Two", "Three"].map { name in
+      let url = testRoot.appendingPathComponent("\(name).jpg")
+      try Data("image bytes".utf8).write(to: url)
+      return url
+    }
+
+    let libraryURL = testRoot.appendingPathComponent("Library")
+    let library = try WallpaperLibraryStore(rootDirectory: libraryURL)
+    let imported = try library.importImages(at: sources)
+    try library.delete(itemIDs: [imported[0].id, imported[2].id])
+
+    XCTAssertEqual(library.items.map(\.displayName), ["Two"])
+    XCTAssertEqual(
+      try fileManager.contentsOfDirectory(atPath: libraryURL.appendingPathComponent("Images").path),
+      [imported[1].fileName]
+    )
+    XCTAssertEqual(try WallpaperLibraryStore(rootDirectory: libraryURL).items, [imported[1]])
   }
 
   func testManifestEntriesMissingOptionalFieldsStillLoad() throws {
@@ -104,7 +129,7 @@ final class WallpaperLibraryStoreTests: XCTestCase {
     let item = try XCTUnwrap(library.importImages(at: [sourceURL]).first)
     let managedURL = library.fileURL(for: item)
 
-    try library.delete(itemID: item.id)
+    try library.delete(itemIDs: [item.id])
 
     XCTAssertFalse(fileManager.fileExists(atPath: managedURL.path))
     XCTAssertTrue(library.items.isEmpty)

@@ -72,41 +72,45 @@ final class WallpaperLibraryStore {
     imagesDirectory.appendingPathComponent(item.fileName)
   }
 
-  func setEnabled(_ isEnabled: Bool, for id: UUID) throws {
-    guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-    let previousValue = items[index].isEnabled
-    items[index].isEnabled = isEnabled
+  func setEnabled(_ isEnabled: Bool, for ids: Set<UUID>) throws {
+    let previousItems = items
+    for index in items.indices where ids.contains(items[index].id) {
+      items[index].isEnabled = isEnabled
+    }
     do {
       try save()
     } catch {
-      items[index].isEnabled = previousValue
+      items = previousItems
       throw error
     }
   }
 
-  func delete(itemID: UUID) throws {
-    guard let index = items.firstIndex(where: { $0.id == itemID }) else { return }
-    let item = items[index]
-    let managedURL = fileURL(for: item)
-    let stagedURL = rootDirectory.appendingPathComponent(".deleting-\(item.fileName)")
-    let hadManagedFile = fileManager.fileExists(atPath: managedURL.path)
-
-    if hadManagedFile {
-      try fileManager.moveItem(at: managedURL, to: stagedURL)
-    }
-    items.remove(at: index)
+  /// Removes the items and their managed copies. Files are staged aside until
+  /// the manifest is saved, so a failed save leaves the library as it was.
+  func delete(itemIDs ids: Set<UUID>) throws {
+    let previousItems = items
+    var stagedFiles: [(managedURL: URL, stagedURL: URL)] = []
 
     do {
-      try save()
-      if hadManagedFile {
-        try? fileManager.removeItem(at: stagedURL)
+      for item in items where ids.contains(item.id) {
+        let managedURL = fileURL(for: item)
+        guard fileManager.fileExists(atPath: managedURL.path) else { continue }
+        let stagedURL = rootDirectory.appendingPathComponent(".deleting-\(item.fileName)")
+        try fileManager.moveItem(at: managedURL, to: stagedURL)
+        stagedFiles.append((managedURL, stagedURL))
       }
+      items.removeAll { ids.contains($0.id) }
+      try save()
     } catch {
-      items.insert(item, at: index)
-      if hadManagedFile, fileManager.fileExists(atPath: stagedURL.path) {
-        try? fileManager.moveItem(at: stagedURL, to: managedURL)
+      items = previousItems
+      for file in stagedFiles {
+        try? fileManager.moveItem(at: file.stagedURL, to: file.managedURL)
       }
       throw error
+    }
+
+    for file in stagedFiles {
+      try? fileManager.removeItem(at: file.stagedURL)
     }
   }
 

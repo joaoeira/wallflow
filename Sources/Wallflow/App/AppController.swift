@@ -124,19 +124,19 @@ final class AppController: ObservableObject {
     }
   }
 
-  func setEnabled(_ isEnabled: Bool, for item: WallpaperItem) {
-    guard let libraryStore else { return }
+  func setEnabled(_ isEnabled: Bool, for ids: Set<WallpaperItem.ID>) {
+    guard let libraryStore, !ids.isEmpty else { return }
 
     do {
-      try libraryStore.setEnabled(isEnabled, for: item.id)
+      try libraryStore.setEnabled(isEnabled, for: ids)
       refreshItems()
 
-      if !isEnabled, currentItemID == item.id {
+      if !isEnabled, let currentItemID, ids.contains(currentItemID) {
         if enabledItemCount > 0 {
           // The planner continues from the now-excluded item's place.
           rotateNow()
         } else {
-          currentItemID = nil
+          self.currentItemID = nil
           persistCurrentItem()
           invalidateSchedule()
         }
@@ -144,30 +144,41 @@ final class AppController: ObservableObject {
         continueRotation()
       }
     } catch {
-      present(error, title: "Couldn’t Update Photo")
+      present(error, title: ids.count == 1 ? "Couldn’t Update Photo" : "Couldn’t Update Photos")
     }
   }
 
-  func delete(_ item: WallpaperItem) {
-    guard let libraryStore else { return }
+  func delete(_ ids: Set<WallpaperItem.ID>) {
+    guard let libraryStore, !ids.isEmpty else { return }
 
-    // Move on before deleting, while the item still marks its place in the
-    // sequence and its image is still there for the fade to start from.
-    if currentItemID == item.id, items.contains(where: { $0.isEnabled && $0.id != item.id }) {
-      rotateNow()
+    // Move on before deleting, while the deleted items still mark their place
+    // in the sequence and the current image is still there to fade from.
+    if let currentItemID, ids.contains(currentItemID) {
+      let remaining = items.map { item in
+        var item = item
+        if ids.contains(item.id) { item.isEnabled = false }
+        return item
+      }
+      if let successor = RotationPlanner.next(
+        from: remaining,
+        after: currentItemID,
+        order: settings.order
+      ) {
+        apply(item: successor, from: libraryStore)
+      }
     }
 
     do {
-      try libraryStore.delete(itemID: item.id)
+      try libraryStore.delete(itemIDs: ids)
       refreshItems()
 
-      if currentItemID == item.id {
-        currentItemID = nil
+      if let currentItemID, ids.contains(currentItemID) {
+        self.currentItemID = nil
         persistCurrentItem()
       }
       continueRotation()
     } catch {
-      present(error, title: "Couldn’t Delete Photo")
+      present(error, title: ids.count == 1 ? "Couldn’t Delete Photo" : "Couldn’t Delete Photos")
     }
   }
 
