@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 
 @testable import Wallflow
@@ -94,6 +95,37 @@ final class AppControllerTests: XCTestCase {
     XCTAssertEqual(app.applier.applications.count, 2)
     XCTAssertEqual(relaunched.nextChangeDate, app.now.addingTimeInterval(30 * 60))
   }
+
+  func testWakingAfterTheNextChangeWasDueRotatesImmediately() throws {
+    let app = try TestApp(testCase: self)
+    let controller = app.launch()
+    controller.importImages(at: [
+      try app.makeImageFile(named: "Beach"), try app.makeImageFile(named: "Forest"),
+    ])
+    let asleepItemID = controller.currentItemID
+    app.now += 2 * 60 * 60
+
+    app.postWakeNotification()
+
+    XCTAssertNotEqual(controller.currentItemID, asleepItemID)
+    XCTAssertEqual(app.applier.applications.count, 2)
+    XCTAssertEqual(controller.nextChangeDate, app.now.addingTimeInterval(30 * 60))
+  }
+
+  func testWakingBeforeTheNextChangeKeepsTheCountdown() throws {
+    let app = try TestApp(testCase: self)
+    let controller = app.launch()
+    controller.importImages(at: [
+      try app.makeImageFile(named: "Beach"), try app.makeImageFile(named: "Forest"),
+    ])
+    let countdown = controller.nextChangeDate
+    app.now += 10 * 60
+
+    app.postWakeNotification()
+
+    XCTAssertEqual(controller.nextChangeDate, countdown)
+    XCTAssertEqual(app.applier.applications.count, 1)
+  }
 }
 
 @MainActor
@@ -127,6 +159,13 @@ private final class TestApp {
     )
     controller.start()
     return controller
+  }
+
+  func postWakeNotification() {
+    NSWorkspace.shared.notificationCenter.post(
+      name: NSWorkspace.didWakeNotification,
+      object: NSWorkspace.shared
+    )
   }
 
   func makeImageFile(named name: String) throws -> URL {

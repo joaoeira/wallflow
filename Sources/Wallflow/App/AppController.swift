@@ -31,6 +31,7 @@ final class AppController: ObservableObject {
   private let now: () -> Date
   private var libraryStore: WallpaperLibraryStore?
   private var timer: Timer?
+  private var wakeObserver: AnyCancellable?
   private var hasStarted = false
 
   private static let settingsKey = "wallflow.settings"
@@ -90,6 +91,11 @@ final class AppController: ObservableObject {
   func start() {
     guard !hasStarted else { return }
     hasStarted = true
+    wakeObserver = NSWorkspace.shared.notificationCenter
+      .publisher(for: NSWorkspace.didWakeNotification)
+      .sink { [weak self] _ in
+        self?.catchUpAfterWake()
+      }
     resumeSavedCountdown()
     continueRotation()
   }
@@ -269,6 +275,14 @@ final class AppController: ObservableObject {
     // A date further out than one interval means the clock moved backwards.
     let latestDate = now().addingTimeInterval(rotationInterval)
     resumeCountdown(to: min(savedDate, latestDate))
+  }
+
+  /// A run-loop timer isn't guaranteed to fire on schedule across sleep, so
+  /// re-arm it against the wall clock, rotating now if the change came due
+  /// while the Mac was asleep.
+  private func catchUpAfterWake() {
+    guard let nextChangeDate else { return }
+    resumeCountdown(to: nextChangeDate)
   }
 
   /// Counts down to `fireDate`, or rotates straight away if it has passed.
