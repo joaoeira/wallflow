@@ -72,6 +72,24 @@ final class WallpaperLibraryStoreTests: XCTestCase {
     XCTAssertEqual(reloaded.items.first?.isEnabled, false)
   }
 
+  func testManifestEntriesMissingOptionalFieldsStillLoad() throws {
+    let fileManager = FileManager.default
+    let libraryURL = fileManager.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try fileManager.createDirectory(at: libraryURL, withIntermediateDirectories: true)
+    defer { try? fileManager.removeItem(at: libraryURL) }
+    let id = UUID()
+    try Data(
+      #"[{"id":"\#(id.uuidString)","fileName":"Beach.jpg","futureField":1}]"#.utf8
+    ).write(to: libraryURL.appendingPathComponent("Library.json"))
+
+    let library = try WallpaperLibraryStore(rootDirectory: libraryURL)
+
+    XCTAssertEqual(library.items.map(\.id), [id])
+    XCTAssertEqual(library.items.first?.displayName, "Beach")
+    XCTAssertEqual(library.items.first?.isEnabled, true)
+  }
+
   func testDeleteRemovesManagedImageAndManifestEntry() throws {
     let fileManager = FileManager.default
     let testRoot = fileManager.temporaryDirectory
