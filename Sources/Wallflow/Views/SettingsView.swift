@@ -123,12 +123,24 @@ struct SettingsView: View {
               Toggle(
                 "Open Wallflow at login",
                 isOn: Binding(
-                  get: { controller.launchAtLoginEnabled },
+                  get: { controller.launchAtLoginState != .disabled },
                   set: { controller.setLaunchAtLogin($0) }
                 )
               )
               .labelsHidden()
               .toggleStyle(.switch)
+            }
+
+            if controller.launchAtLoginState == .needsApproval {
+              HStack {
+                Text("Wallflow is switched off in Login Items, so it won’t open at login.")
+                  .font(.callout)
+                  .foregroundStyle(.secondary)
+                Spacer()
+                Button("Open Login Items…") {
+                  controller.openLoginItemsSettings()
+                }
+              }
             }
 
             Divider()

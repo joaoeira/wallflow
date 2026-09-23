@@ -21,7 +21,7 @@ final class AppController: ObservableObject {
   }
   @Published private(set) var currentItemID: UUID?
   @Published private(set) var nextChangeDate: Date?
-  @Published private(set) var launchAtLoginEnabled = false
+  @Published private(set) var launchAtLoginState = LaunchAtLoginManager.State.disabled
   @Published var presentedError: PresentedError?
 
   let libraryDirectoryURL: URL
@@ -31,7 +31,7 @@ final class AppController: ObservableObject {
   private let now: () -> Date
   private var libraryStore: WallpaperLibraryStore?
   private var timer: Timer?
-  private var wakeObserver: AnyCancellable?
+  private var observers: Set<AnyCancellable> = []
   private var hasStarted = false
 
   private static let settingsKey = "wallflow.settings"
@@ -49,7 +49,7 @@ final class AppController: ObservableObject {
     self.now = now
     settings = Self.loadSettings(from: defaults)
     currentItemID = defaults.string(forKey: Self.currentItemKey).flatMap(UUID.init(uuidString:))
-    launchAtLoginEnabled = LaunchAtLoginManager.isEnabled
+    launchAtLoginState = LaunchAtLoginManager.state
 
     if let libraryDirectoryURL {
       self.libraryDirectoryURL = libraryDirectoryURL
@@ -91,11 +91,19 @@ final class AppController: ObservableObject {
   func start() {
     guard !hasStarted else { return }
     hasStarted = true
-    wakeObserver = NSWorkspace.shared.notificationCenter
+    NSWorkspace.shared.notificationCenter
       .publisher(for: NSWorkspace.didWakeNotification)
       .sink { [weak self] _ in
         self?.catchUpAfterWake()
       }
+      .store(in: &observers)
+    // The login item can be switched off or approved in System Settings.
+    NotificationCenter.default
+      .publisher(for: NSApplication.didBecomeActiveNotification)
+      .sink { [weak self] _ in
+        self?.launchAtLoginState = LaunchAtLoginManager.state
+      }
+      .store(in: &observers)
     resumeSavedCountdown()
     continueRotation()
   }
@@ -200,11 +208,15 @@ final class AppController: ObservableObject {
   func setLaunchAtLogin(_ isEnabled: Bool) {
     do {
       try LaunchAtLoginManager.setEnabled(isEnabled)
-      launchAtLoginEnabled = LaunchAtLoginManager.isEnabled
+      launchAtLoginState = LaunchAtLoginManager.state
     } catch {
-      launchAtLoginEnabled = LaunchAtLoginManager.isEnabled
+      launchAtLoginState = LaunchAtLoginManager.state
       present(error, title: "Couldn’t Change Login Setting")
     }
+  }
+
+  func openLoginItemsSettings() {
+    LaunchAtLoginManager.openLoginItemsSettings()
   }
 
   private func apply(item: WallpaperItem, from store: WallpaperLibraryStore) {
