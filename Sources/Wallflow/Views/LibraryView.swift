@@ -72,7 +72,7 @@ struct LibraryView: View {
               ForEach(visibleItems) { item in
                 WallpaperCard(
                   item: item,
-                  imageURL: imageURL(for: item),
+                  imageURL: controller.imageURL(for: item),
                   isCurrent: item.id == controller.currentItemID,
                   onToggle: { controller.setEnabled($0, for: item) },
                   onShow: { controller.show(item) },
@@ -164,12 +164,6 @@ struct LibraryView: View {
     if panel.runModal() == .OK {
       controller.importImages(at: panel.urls)
     }
-  }
-
-  private func imageURL(for item: WallpaperItem) -> URL {
-    controller.libraryDirectoryURL
-      .appendingPathComponent("Images", isDirectory: true)
-      .appendingPathComponent(item.fileName)
   }
 
   private func gridColumns(for availableWidth: CGFloat) -> [GridItem] {

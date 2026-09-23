@@ -3,7 +3,7 @@ import SwiftUI
 
 struct WallpaperCard: View {
   let item: WallpaperItem
-  let imageURL: URL
+  let imageURL: URL?
   let isCurrent: Bool
   let onToggle: (Bool) -> Void
   let onShow: () -> Void
@@ -100,7 +100,7 @@ struct WallpaperCard: View {
 }
 
 private struct WallpaperThumbnail: View {
-  let imageURL: URL
+  let imageURL: URL?
 
   @State private var image: NSImage?
   @State private var loadedImageURL: URL?
@@ -125,6 +125,7 @@ private struct WallpaperThumbnail: View {
       guard loadedImageURL != imageURL else { return }
       loadedImageURL = imageURL
       image = nil
+      guard let imageURL else { return }
       image = await WallpaperThumbnailCache.shared.image(for: imageURL)
     }
   }

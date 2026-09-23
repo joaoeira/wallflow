@@ -183,6 +183,10 @@ final class AppController: ObservableObject {
     apply(item: item, from: libraryStore)
   }
 
+  func imageURL(for item: WallpaperItem) -> URL? {
+    libraryStore?.fileURL(for: item)
+  }
+
   func reveal(_ item: WallpaperItem) {
     guard let libraryStore else { return }
     NSWorkspace.shared.activateFileViewerSelecting([libraryStore.fileURL(for: item)])
