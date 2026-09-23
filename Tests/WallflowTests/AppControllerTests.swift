@@ -30,6 +30,24 @@ final class AppControllerTests: XCTestCase {
     XCTAssertEqual(controller.currentItem?.displayName, "Beach")
     XCTAssertNil(controller.nextChangeDate)
   }
+
+  func testEditingOtherPhotosKeepsTheCountdown() throws {
+    let app = try TestApp(testCase: self)
+    let controller = app.launch()
+    controller.importImages(at: [
+      try app.makeImageFile(named: "Beach"), try app.makeImageFile(named: "Forest"),
+    ])
+    let countdown = try XCTUnwrap(controller.nextChangeDate)
+    let other = try XCTUnwrap(controller.items.first { $0.id != controller.currentItemID })
+    app.now += 10 * 60
+
+    controller.setEnabled(false, for: other)
+    controller.setEnabled(true, for: other)
+    controller.delete(other)
+
+    XCTAssertEqual(controller.nextChangeDate, countdown)
+    XCTAssertEqual(app.applier.applications.count, 1)
+  }
 }
 
 @MainActor

@@ -109,8 +109,8 @@ final class AppController: ObservableObject {
       refreshItems()
       if settings.rotationEnabled, currentItem == nil {
         rotateNow()
-      } else if settings.rotationEnabled, timer == nil {
-        scheduleNextChange()
+      } else {
+        continueRotation()
       }
       return true
     } catch {
@@ -134,8 +134,8 @@ final class AppController: ObservableObject {
         } else {
           invalidateSchedule()
         }
-      } else if settings.rotationEnabled {
-        scheduleNextChange()
+      } else {
+        continueRotation()
       }
     } catch {
       present(error, title: "Couldn’t Update Photo")
@@ -157,8 +157,8 @@ final class AppController: ObservableObject {
 
       if wasCurrent, enabledItemCount > 0 {
         rotateNow()
-      } else if settings.rotationEnabled {
-        scheduleNextChange()
+      } else {
+        continueRotation()
       }
     } catch {
       present(error, title: "Couldn’t Delete Photo")
@@ -247,6 +247,18 @@ final class AppController: ObservableObject {
     } else if !settings.rotationEnabled {
       invalidateSchedule()
     } else if scheduleChanged {
+      scheduleNextChange()
+    }
+  }
+
+  /// Brings the schedule in line with the library and settings without
+  /// restarting a countdown that is already running.
+  private func continueRotation() {
+    guard settings.rotationEnabled, enabledItemCount > 0 else {
+      invalidateSchedule()
+      return
+    }
+    if timer == nil {
       scheduleNextChange()
     }
   }
