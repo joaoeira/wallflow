@@ -55,9 +55,20 @@ struct LibraryView: View {
             .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-      } else if visibleItems.isEmpty {
+      } else if visibleItems.isEmpty, !searchText.isEmpty {
         ContentUnavailableView.search(text: searchText)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else if visibleItems.isEmpty {
+        ContentUnavailableView(
+          "No \(filter.title) Photos",
+          systemImage: "line.3.horizontal.decrease.circle",
+          description: Text(
+            filter == .enabled
+              ? "Turn a photo on to add it to the rotation."
+              : "Photos you turn off stay in the library but leave the rotation."
+          )
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
         GeometryReader { geometry in
           ScrollView {
