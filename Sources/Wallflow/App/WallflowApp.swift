@@ -2,15 +2,22 @@ import SwiftUI
 
 @main
 struct WallflowApp: App {
-  @StateObject private var controller = AppController()
+  @StateObject private var controller: AppController
+
+  init() {
+    let controller = AppController()
+    _controller = StateObject(wrappedValue: controller)
+    // Rotation runs from launch, whether or not the main window is ever shown
+    // (for example after a login launch or a restored, closed window).
+    Task {
+      controller.start()
+    }
+  }
 
   var body: some Scene {
     Window("Wallflow", id: "main") {
       ContentView(controller: controller)
         .frame(minWidth: 860, minHeight: 560)
-        .onAppear {
-          controller.start()
-        }
     }
     .defaultSize(width: 1_040, height: 700)
     .commands {
