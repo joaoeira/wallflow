@@ -17,10 +17,17 @@ struct WallflowApp: App {
   var body: some Scene {
     Window("Wallflow", id: "main") {
       ContentView(controller: controller)
-        .frame(minWidth: 860, minHeight: 560)
+        .frame(minWidth: 720, minHeight: 480)
     }
     .defaultSize(width: 1_040, height: 700)
     .commands {
+      CommandGroup(replacing: .newItem) {
+        Button("Add Photos…") {
+          controller.importImages(at: ImportPanel.chooseImages())
+        }
+        .keyboardShortcut("o")
+      }
+
       CommandMenu("Wallpaper") {
         Button("Next Wallpaper") {
           controller.rotateNow()
@@ -28,7 +35,7 @@ struct WallflowApp: App {
         .keyboardShortcut("]", modifiers: [.command])
         .disabled(controller.enabledItemCount == 0)
 
-        Toggle("Rotation Enabled", isOn: $controller.settings.rotationEnabled)
+        Toggle("Automatic Rotation", isOn: $controller.settings.rotationEnabled)
       }
     }
 

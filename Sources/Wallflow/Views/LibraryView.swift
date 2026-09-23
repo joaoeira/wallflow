@@ -1,179 +1,110 @@
-import AppKit
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct LibraryView: View {
-  private enum Filter: String, CaseIterable, Identifiable {
-    case all
-    case enabled
-    case disabled
-
-    var id: Self { self }
-
-    var title: String {
-      rawValue.capitalized
-    }
-  }
-
   @ObservedObject var controller: AppController
-  @State private var searchText = ""
-  @State private var filter: Filter = .all
+  let section: LibrarySection
+  let searchText: String
+
   @State private var pendingDelete: WallpaperItem?
   @State private var isDropTargeted = false
 
   private var visibleItems: [WallpaperItem] {
     controller.items
       .filter { item in
-        let matchesFilter =
-          switch filter {
-          case .all: true
-          case .enabled: item.isEnabled
-          case .disabled: !item.isEnabled
-          }
-        let matchesSearch =
-          searchText.isEmpty
-          || item.displayName.localizedCaseInsensitiveContains(searchText)
-        return matchesFilter && matchesSearch
+        section.contains(item)
+          && (searchText.isEmpty || item.displayName.localizedCaseInsensitiveContains(searchText))
       }
       .sorted { $0.addedAt > $1.addedAt }
   }
 
   var body: some View {
-    VStack(spacing: 0) {
-      header
-      Divider()
-
-      if controller.items.isEmpty {
-        ContentUnavailableView {
-          Label("Build Your Rotation", systemImage: "photo.badge.plus")
-        } description: {
-          Text(
-            "Add a few favorite images. Wallflow keeps managed copies so the rotation stays reliable."
-          )
-        } actions: {
-          Button("Add Photos…", action: chooseImages)
-            .buttonStyle(.borderedProminent)
+    content
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .overlay {
+        if isDropTargeted {
+          RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .strokeBorder(Color.accentColor, lineWidth: 3)
+            .padding(6)
+            .allowsHitTesting(false)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-      } else if visibleItems.isEmpty, !searchText.isEmpty {
-        ContentUnavailableView.search(text: searchText)
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-      } else if visibleItems.isEmpty {
-        ContentUnavailableView(
-          "No \(filter.title) Photos",
-          systemImage: "line.3.horizontal.decrease.circle",
-          description: Text(
-            filter == .enabled
-              ? "Turn a photo on to add it to the rotation."
-              : "Photos you turn off stay in the library but leave the rotation."
-          )
+      }
+      .dropDestination(for: URL.self) { urls, _ in
+        controller.importImages(at: urls)
+      } isTargeted: { targeted in
+        isDropTargeted = targeted
+      }
+      .confirmationDialog(
+        "Delete “\(pendingDelete?.displayName ?? "this photo")”?",
+        isPresented: Binding(
+          get: { pendingDelete != nil },
+          set: { if !$0 { pendingDelete = nil } }
         )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-      } else {
-        GeometryReader { geometry in
-          ScrollView {
-            RotationStatusView(controller: controller)
-              .padding(.bottom, 16)
-
-            LazyVGrid(
-              columns: gridColumns(for: max(0, geometry.size.width - 48)),
-              alignment: .leading,
-              spacing: 16
-            ) {
-              ForEach(visibleItems) { item in
-                WallpaperCard(
-                  item: item,
-                  imageURL: controller.imageURL(for: item),
-                  isCurrent: item.id == controller.currentItemID,
-                  onToggle: { controller.setEnabled($0, for: [item.id]) },
-                  onShow: { controller.show(item) },
-                  onReveal: { controller.reveal(item) },
-                  onDelete: { pendingDelete = item }
-                )
-                .frame(maxWidth: .infinity)
-              }
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+      ) {
+        Button("Delete Photo", role: .destructive) {
+          if let pendingDelete {
+            controller.delete([pendingDelete.id])
           }
-          .contentMargins(24, for: .scrollContent)
+          pendingDelete = nil
+        }
+        Button("Cancel", role: .cancel) {
+          pendingDelete = nil
+        }
+      } message: {
+        Text("This removes Wallflow’s copy. The original file is not affected.")
+      }
+  }
+
+  @ViewBuilder
+  private var content: some View {
+    if controller.items.isEmpty {
+      ContentUnavailableView {
+        Label("Add Your Wallpapers", systemImage: "photo.badge.plus")
+      } description: {
+        Text(
+          "Drag images here or choose them in Finder. Wallflow keeps its own copies, so your originals stay where they are."
+        )
+      } actions: {
+        Button("Add Photos…") {
+          controller.importImages(at: ImportPanel.chooseImages())
         }
       }
-    }
-    .background(isDropTargeted ? Color.accentColor.opacity(0.08) : Color.clear)
-    .dropDestination(for: URL.self) { urls, _ in
-      controller.importImages(at: urls)
-    } isTargeted: { targeted in
-      isDropTargeted = targeted
-    }
-    .confirmationDialog(
-      "Delete “\(pendingDelete?.displayName ?? "this photo")”?",
-      isPresented: Binding(
-        get: { pendingDelete != nil },
-        set: { if !$0 { pendingDelete = nil } }
+    } else if visibleItems.isEmpty, !searchText.isEmpty {
+      ContentUnavailableView.search(text: searchText)
+    } else if visibleItems.isEmpty {
+      ContentUnavailableView(
+        section == .excluded ? "No Excluded Photos" : "No Photos in Rotation",
+        systemImage: section.systemImage,
+        description: Text(
+          section == .excluded
+            ? "Photos you exclude stay in your library but won’t appear on the desktop."
+            : "Include photos to add them to the rotation."
+        )
       )
-    ) {
-      Button("Delete Photo", role: .destructive) {
-        if let pendingDelete {
-          controller.delete([pendingDelete.id])
-        }
-        pendingDelete = nil
-      }
-      Button("Cancel", role: .cancel) {
-        pendingDelete = nil
-      }
-    } message: {
-      Text("This removes Wallflow’s managed copy. The original file is not affected.")
-    }
-  }
-
-  private var header: some View {
-    VStack(spacing: 14) {
-      HStack(alignment: .firstTextBaseline) {
-        VStack(alignment: .leading, spacing: 3) {
-          Text("Wallpaper Library")
-            .font(.largeTitle.weight(.semibold))
-          Text("\(controller.enabledItemCount) of \(controller.items.count) photos enabled")
-            .foregroundStyle(.secondary)
-        }
-        Spacer()
-        Button(action: chooseImages) {
-          Label("Add Photos", systemImage: "plus")
-        }
-        .buttonStyle(.borderedProminent)
-        .keyboardShortcut("o", modifiers: [.command])
-      }
-
-      HStack(spacing: 12) {
-        TextField("Search photos", text: $searchText)
-          .textFieldStyle(.roundedBorder)
-          .frame(maxWidth: 320)
-
-        Picker("Filter", selection: $filter) {
-          ForEach(Filter.allCases) { filter in
-            Text(filter.title).tag(filter)
+    } else {
+      GeometryReader { geometry in
+        ScrollView {
+          LazyVGrid(
+            columns: gridColumns(for: max(0, geometry.size.width - 48)),
+            alignment: .leading,
+            spacing: 16
+          ) {
+            ForEach(visibleItems) { item in
+              WallpaperCard(
+                item: item,
+                imageURL: controller.imageURL(for: item),
+                isCurrent: item.id == controller.currentItemID,
+                onToggle: { controller.setEnabled($0, for: [item.id]) },
+                onShow: { controller.show(item) },
+                onReveal: { controller.reveal(item) },
+                onDelete: { pendingDelete = item }
+              )
+              .frame(maxWidth: .infinity)
+            }
           }
+          .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .labelsHidden()
-        .pickerStyle(.segmented)
-        .frame(width: 240)
-
-        Spacer()
+        .contentMargins(24, for: .scrollContent)
       }
-    }
-    .padding(24)
-  }
-
-  private func chooseImages() {
-    let panel = NSOpenPanel()
-    panel.title = "Add Photos to Wallflow"
-    panel.prompt = "Add Photos"
-    panel.allowedContentTypes = [.image]
-    panel.allowsMultipleSelection = true
-    panel.canChooseDirectories = false
-    panel.canChooseFiles = true
-
-    if panel.runModal() == .OK {
-      controller.importImages(at: panel.urls)
     }
   }
 
