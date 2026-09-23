@@ -29,7 +29,9 @@ enum WallpaperSetter {
     case .allDisplays:
       NSScreen.screens
     case .mainDisplay:
-      NSScreen.main.map { [$0] } ?? []
+      // NSScreen.main is the screen holding the key window; the first screen
+      // is the one with the menu bar, which is what "main display" means here.
+      NSScreen.screens.first.map { [$0] } ?? []
     }
   }
 }
