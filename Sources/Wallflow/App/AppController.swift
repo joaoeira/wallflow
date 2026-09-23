@@ -35,6 +35,7 @@ final class AppController: ObservableObject {
 
   private static let settingsKey = "wallflow.settings"
   private static let currentItemKey = "wallflow.current-item"
+  private static let nextChangeKey = "wallflow.next-change"
 
   init(
     libraryDirectoryURL: URL? = nil,
@@ -89,6 +90,7 @@ final class AppController: ObservableObject {
   func start() {
     guard !hasStarted else { return }
     hasStarted = true
+    resumeSavedCountdown()
     continueRotation()
   }
 
@@ -255,25 +257,48 @@ final class AppController: ObservableObject {
     }
   }
 
-  private func scheduleNextChange() {
-    timer?.invalidate()
+  /// Picks up the countdown from the previous run, so relaunching Wallflow
+  /// (for example at every login) doesn't restart the interval each time.
+  private func resumeSavedCountdown() {
+    guard
+      settings.rotationEnabled,
+      currentItem?.isEnabled == true,
+      let savedDate = defaults.object(forKey: Self.nextChangeKey) as? Date
+    else { return }
 
+    // A date further out than one interval means the clock moved backwards.
+    let latestDate = now().addingTimeInterval(rotationInterval)
+    resumeCountdown(to: min(savedDate, latestDate))
+  }
+
+  /// Counts down to `fireDate`, or rotates straight away if it has passed.
+  private func resumeCountdown(to fireDate: Date) {
+    if fireDate <= now() {
+      rotateNow()
+    } else {
+      startTimer(firingAt: fireDate)
+    }
+  }
+
+  private func scheduleNextChange() {
     guard settings.rotationEnabled, enabledItemCount > 0 else {
-      nextChangeDate = nil
-      timer = nil
+      invalidateSchedule()
       return
     }
+    startTimer(firingAt: now().addingTimeInterval(rotationInterval))
+  }
 
-    let interval = max(60, settings.intervalSeconds)
-    let fireDate = now().addingTimeInterval(interval)
+  private func startTimer(firingAt fireDate: Date) {
+    timer?.invalidate()
     nextChangeDate = fireDate
+    defaults.set(fireDate, forKey: Self.nextChangeKey)
 
     let timer = Timer(fire: fireDate, interval: 0, repeats: false) { [weak self] _ in
       Task { @MainActor in
         self?.rotateNow()
       }
     }
-    timer.tolerance = min(10, interval * 0.05)
+    timer.tolerance = min(10, rotationInterval * 0.05)
     RunLoop.main.add(timer, forMode: .common)
     self.timer = timer
   }
@@ -282,6 +307,11 @@ final class AppController: ObservableObject {
     timer?.invalidate()
     timer = nil
     nextChangeDate = nil
+    defaults.removeObject(forKey: Self.nextChangeKey)
+  }
+
+  private var rotationInterval: TimeInterval {
+    max(60, settings.intervalSeconds)
   }
 
   private func refreshItems() {

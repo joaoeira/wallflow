@@ -63,6 +63,37 @@ final class AppControllerTests: XCTestCase {
     XCTAssertEqual(app.applier.applications.count, 2)
     XCTAssertEqual(controller.nextChangeDate, app.now.addingTimeInterval(30 * 60))
   }
+
+  func testRelaunchingResumesTheSavedCountdown() throws {
+    let app = try TestApp(testCase: self)
+    let first = app.launch()
+    first.importImages(at: [
+      try app.makeImageFile(named: "Beach"), try app.makeImageFile(named: "Forest"),
+    ])
+    let countdown = try XCTUnwrap(first.nextChangeDate)
+    app.now += 20 * 60
+
+    let relaunched = app.launch()
+
+    XCTAssertEqual(relaunched.nextChangeDate, countdown)
+    XCTAssertEqual(relaunched.currentItemID, first.currentItemID)
+    XCTAssertEqual(app.applier.applications.count, 1)
+  }
+
+  func testRelaunchingAfterTheSavedCountdownRotatesImmediately() throws {
+    let app = try TestApp(testCase: self)
+    let first = app.launch()
+    first.importImages(at: [
+      try app.makeImageFile(named: "Beach"), try app.makeImageFile(named: "Forest"),
+    ])
+    app.now += 45 * 60
+
+    let relaunched = app.launch()
+
+    XCTAssertNotEqual(relaunched.currentItemID, first.currentItemID)
+    XCTAssertEqual(app.applier.applications.count, 2)
+    XCTAssertEqual(relaunched.nextChangeDate, app.now.addingTimeInterval(30 * 60))
+  }
 }
 
 @MainActor
