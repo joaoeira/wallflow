@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import ImageIO
 import QuartzCore
 
 @MainActor
@@ -105,26 +106,28 @@ final class WallpaperTransitionCoordinator: WallpaperApplying {
     scaling: WallpaperScaling,
     target: DisplayTarget
   ) -> [NSWindow] {
-    var loadedImages: [URL: NSImage?] = [:]
-    func image(at url: URL) -> NSImage? {
-      if let loaded = loadedImages[url] { return loaded }
-      let image = NSImage(contentsOf: url)
-      loadedImages[url] = image
-      return image
+    var sources: [URL: TransitionImageSource?] = [:]
+    func source(at url: URL) -> TransitionImageSource? {
+      if let loaded = sources[url] { return loaded }
+      let source = TransitionImageSource(url: url)
+      sources[url] = source
+      return source
     }
 
-    guard let incomingImage = image(at: incomingImageURL) else { return [] }
+    guard let incomingSource = source(at: incomingImageURL) else { return [] }
 
     return WallpaperSetter.screens(for: target).compactMap { screen in
-      guard
-        let outgoingImageURL = NSWorkspace.shared.desktopImageURL(for: screen),
-        outgoingImageURL.standardizedFileURL.path != incomingImageURL.standardizedFileURL.path,
-        let outgoingImage = image(at: outgoingImageURL)
-      else { return nil }
-
       let outgoingScaling =
         NSWorkspace.shared.desktopImageOptions(for: screen)
         .flatMap(WallpaperScaling.init(desktopImageOptions:)) ?? scaling
+      guard
+        let outgoingImageURL = NSWorkspace.shared.desktopImageURL(for: screen),
+        outgoingImageURL.standardizedFileURL.path != incomingImageURL.standardizedFileURL.path,
+        let outgoingImage = source(at: outgoingImageURL)?
+          .image(for: screen, scaling: outgoingScaling),
+        let incomingImage = incomingSource.image(for: screen, scaling: scaling)
+      else { return nil }
+
       return makeOverlayWindow(
         for: screen,
         outgoing: (outgoingImage, outgoingScaling),
@@ -252,7 +255,7 @@ private final class WallpaperImageView: NSView {
 
     guard image.size.width > 0, image.size.height > 0 else { return }
     image.draw(
-      in: destinationRect,
+      in: scaling.destinationRect(forImageOfSize: image.size, in: bounds),
       from: NSRect(origin: .zero, size: image.size),
       operation: .sourceOver,
       fraction: 1,
@@ -261,31 +264,98 @@ private final class WallpaperImageView: NSView {
     )
   }
 
-  private var destinationRect: NSRect {
-    switch scaling {
+}
+
+/// A wallpaper file, decoded no larger than a given screen will draw it.
+/// Wallpapers are often several times the display's resolution, and a
+/// full-size decode on the main thread stalls the start of the fade.
+@MainActor
+private final class TransitionImageSource {
+  private let source: CGImageSource
+  /// The upright size NSImage would report: pixels at the file's resolution.
+  private let pointSize: NSSize
+  private var decodedImages: [Int: NSImage] = [:]
+
+  init?(url: URL) {
+    guard
+      let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+      let pixelWidth = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
+      let pixelHeight = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue,
+      pixelWidth > 0, pixelHeight > 0
+    else { return nil }
+
+    func dotsPerInch(_ key: CFString) -> Double {
+      let value = (properties[key] as? NSNumber)?.doubleValue ?? 72
+      return value > 0 ? value : 72
+    }
+    let width = pixelWidth * 72 / dotsPerInch(kCGImagePropertyDPIWidth)
+    let height = pixelHeight * 72 / dotsPerInch(kCGImagePropertyDPIHeight)
+    // EXIF orientations 5 through 8 turn the image a quarter turn.
+    let orientation = (properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+    let isQuarterTurned = (5...8).contains(orientation)
+
+    self.source = source
+    pointSize =
+      isQuarterTurned
+      ? NSSize(width: height, height: width)
+      : NSSize(width: width, height: height)
+  }
+
+  func image(for screen: NSScreen, scaling: WallpaperScaling) -> NSImage? {
+    let drawnSize = scaling.destinationRect(
+      forImageOfSize: pointSize,
+      in: NSRect(origin: .zero, size: screen.frame.size)
+    ).size
+    let maxPixelSize = Int(
+      (max(drawnSize.width, drawnSize.height) * screen.backingScaleFactor).rounded(.up)
+    )
+    if let decoded = decodedImages[maxPixelSize] { return decoded }
+
+    guard
+      let thumbnail = CGImageSourceCreateThumbnailAtIndex(
+        source,
+        0,
+        [
+          kCGImageSourceCreateThumbnailFromImageAlways: true,
+          kCGImageSourceCreateThumbnailWithTransform: true,
+          kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+          kCGImageSourceShouldCacheImmediately: true,
+        ] as CFDictionary
+      )
+    else { return nil }
+
+    let image = NSImage(cgImage: thumbnail, size: pointSize)
+    decodedImages[maxPixelSize] = image
+    return image
+  }
+}
+
+extension WallpaperScaling {
+  /// Where the desktop draws an image of `imageSize` within `bounds`.
+  fileprivate func destinationRect(forImageOfSize imageSize: NSSize, in bounds: NSRect) -> NSRect {
+    func centered(_ size: NSSize) -> NSRect {
+      NSRect(
+        x: bounds.midX - size.width / 2,
+        y: bounds.midY - size.height / 2,
+        width: size.width,
+        height: size.height
+      )
+    }
+
+    switch self {
     case .stretch:
       return bounds
     case .center:
-      return centeredRect(size: image.size)
+      return centered(imageSize)
     case .fill, .fit:
-      let horizontalScale = bounds.width / image.size.width
-      let verticalScale = bounds.height / image.size.height
+      let horizontalScale = bounds.width / imageSize.width
+      let verticalScale = bounds.height / imageSize.height
       let scale =
-        scaling == .fill
+        self == .fill
         ? max(horizontalScale, verticalScale)
         : min(horizontalScale, verticalScale)
-      return centeredRect(
-        size: NSSize(width: image.size.width * scale, height: image.size.height * scale)
-      )
+      return centered(NSSize(width: imageSize.width * scale, height: imageSize.height * scale))
     }
-  }
-
-  private func centeredRect(size: NSSize) -> NSRect {
-    NSRect(
-      x: bounds.midX - size.width / 2,
-      y: bounds.midY - size.height / 2,
-      width: size.width,
-      height: size.height
-    )
   }
 }
