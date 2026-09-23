@@ -39,3 +39,5 @@ swift test
 The domain behavior is tested at two public seams: rotation planning and the managed image library. Wallpaper application uses macOS’s `NSWorkspace` desktop-image API, while `SMAppService` manages launch at login.
 
 Rotation occurs while Wallflow is running. Closing the main window leaves the menu-bar app running; choosing **Quit Wallflow** stops the timer.
+
+macOS’s public desktop-image API changes the wallpaper of the active Space on each display. Other Spaces (additional desktops in Mission Control) keep their own wallpaper, so rotation follows whichever Space you’re on when a change happens.
