@@ -207,9 +207,11 @@ final class AppController: ObservableObject {
     libraryStore?.fileURL(for: item)
   }
 
-  func reveal(_ item: WallpaperItem) {
+  func reveal(_ ids: Set<WallpaperItem.ID>) {
     guard let libraryStore else { return }
-    NSWorkspace.shared.activateFileViewerSelecting([libraryStore.fileURL(for: item)])
+    NSWorkspace.shared.activateFileViewerSelecting(
+      items.filter { ids.contains($0.id) }.map(libraryStore.fileURL(for:))
+    )
   }
 
   func revealLibrary() {

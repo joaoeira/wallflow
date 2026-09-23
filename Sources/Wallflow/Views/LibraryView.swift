@@ -1,3 +1,5 @@
+import AppKit
+import QuickLook
 import SwiftUI
 
 struct LibraryView: View {
@@ -5,8 +7,18 @@ struct LibraryView: View {
   let section: LibrarySection
   let searchText: String
 
-  @State private var pendingDelete: WallpaperItem?
+  @State private var selection: Set<WallpaperItem.ID> = []
+  /// The item a shift-click extends from and the arrow keys move from.
+  @State private var selectionAnchor: WallpaperItem.ID?
+  @State private var pendingDeletion: Set<WallpaperItem.ID> = []
+  @State private var quickLookURL: URL?
   @State private var isDropTargeted = false
+  @FocusState private var isGridFocused: Bool
+
+  private let minimumTileWidth: CGFloat = 200
+  private let maximumTileWidth: CGFloat = 320
+  private let columnSpacing: CGFloat = 20
+  private let margin: CGFloat = 20
 
   private var visibleItems: [WallpaperItem] {
     controller.items
@@ -15,6 +27,10 @@ struct LibraryView: View {
           && (searchText.isEmpty || item.displayName.localizedCaseInsensitiveContains(searchText))
       }
       .sorted { $0.addedAt > $1.addedAt }
+  }
+
+  private var selectedItems: [WallpaperItem] {
+    visibleItems.filter { selection.contains($0.id) }
   }
 
   var body: some View {
@@ -33,25 +49,31 @@ struct LibraryView: View {
       } isTargeted: { targeted in
         isDropTargeted = targeted
       }
+      .onChange(of: section) {
+        selection = []
+        selectionAnchor = nil
+      }
       .confirmationDialog(
-        "Delete “\(pendingDelete?.displayName ?? "this photo")”?",
+        deletionTitle,
         isPresented: Binding(
-          get: { pendingDelete != nil },
-          set: { if !$0 { pendingDelete = nil } }
+          get: { !pendingDeletion.isEmpty },
+          set: { if !$0 { pendingDeletion = [] } }
         )
       ) {
-        Button("Delete Photo", role: .destructive) {
-          if let pendingDelete {
-            controller.delete([pendingDelete.id])
-          }
-          pendingDelete = nil
+        Button(pendingDeletion.count == 1 ? "Delete Photo" : "Delete Photos", role: .destructive) {
+          controller.delete(pendingDeletion)
+          selection.subtract(pendingDeletion)
+          pendingDeletion = []
         }
-        Button("Cancel", role: .cancel) {
-          pendingDelete = nil
-        }
+        Button("Cancel", role: .cancel) {}
       } message: {
-        Text("This removes Wallflow’s copy. The original file is not affected.")
+        Text(
+          pendingDeletion.count == 1
+            ? "This removes Wallflow’s copy. The original file is not affected."
+            : "This removes Wallflow’s copies. The original files are not affected."
+        )
       }
+      .quickLookPreview($quickLookURL, in: selectedItems.compactMap(controller.imageURL(for:)))
   }
 
   @ViewBuilder
@@ -82,49 +104,196 @@ struct LibraryView: View {
       )
     } else {
       GeometryReader { geometry in
-        ScrollView {
-          LazyVGrid(
-            columns: gridColumns(for: max(0, geometry.size.width - 48)),
-            alignment: .leading,
-            spacing: 16
-          ) {
-            ForEach(visibleItems) { item in
-              WallpaperCard(
-                item: item,
-                imageURL: controller.imageURL(for: item),
-                isCurrent: item.id == controller.currentItemID,
-                onToggle: { controller.setEnabled($0, for: [item.id]) },
-                onShow: { controller.show(item) },
-                onReveal: { controller.reveal(item) },
-                onDelete: { pendingDelete = item }
-              )
-              .frame(maxWidth: .infinity)
-            }
+        let columnCount = columnCount(for: geometry.size.width - margin * 2)
+        ScrollViewReader { scrollProxy in
+          ScrollView {
+            grid(columnCount: columnCount)
           }
-          .frame(maxWidth: .infinity, alignment: .topLeading)
+          .contentMargins(margin, for: .scrollContent)
+          .focusable()
+          .focused($isGridFocused)
+          .focusEffectDisabled()
+          .onMoveCommand { direction in
+            moveSelection(direction, columnCount: columnCount, scrollProxy: scrollProxy)
+          }
+          .onDeleteCommand {
+            pendingDeletion = Set(selectedItems.map(\.id))
+          }
+          .onKeyPress(.space) {
+            toggleQuickLook()
+            return .handled
+          }
+          .onCommand(#selector(NSResponder.selectAll(_:))) {
+            selection = Set(visibleItems.map(\.id))
+          }
         }
-        .contentMargins(24, for: .scrollContent)
       }
     }
   }
 
-  private func gridColumns(for availableWidth: CGFloat) -> [GridItem] {
-    let minimumCardWidth: CGFloat = 220
-    let maximumCardWidth: CGFloat = 300
-    let spacing: CGFloat = 16
-    let fittingColumnCount = max(
-      1,
-      Int((availableWidth + spacing) / (minimumCardWidth + spacing))
-    )
-    let columnCount = min(visibleItems.count, fittingColumnCount)
-
-    return Array(
-      repeating: GridItem(
-        .flexible(minimum: minimumCardWidth, maximum: maximumCardWidth),
-        spacing: spacing,
-        alignment: .top
+  private func grid(columnCount: Int) -> some View {
+    LazyVGrid(
+      columns: Array(
+        repeating: GridItem(
+          .flexible(minimum: minimumTileWidth, maximum: maximumTileWidth),
+          spacing: columnSpacing,
+          alignment: .top
+        ),
+        count: columnCount
       ),
-      count: columnCount
+      alignment: .leading,
+      spacing: 24
+    ) {
+      ForEach(visibleItems) { item in
+        WallpaperTile(
+          item: item,
+          imageURL: controller.imageURL(for: item),
+          isCurrent: item.id == controller.currentItemID,
+          isSelected: selection.contains(item.id)
+        )
+        .id(item.id)
+        .onTapGesture(count: 2) {
+          controller.show(item)
+        }
+        .simultaneousGesture(
+          TapGesture().onEnded {
+            select(item, modifiers: NSEvent.modifierFlags)
+          }
+        )
+        .contextMenu {
+          contextMenu(for: item)
+        }
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .topLeading)
+    .background {
+      // Clicking between tiles clears the selection, as in Finder.
+      Color.clear
+        .contentShape(Rectangle())
+        .onTapGesture {
+          selection = []
+          isGridFocused = true
+        }
+    }
+  }
+
+  @ViewBuilder
+  private func contextMenu(for item: WallpaperItem) -> some View {
+    // Like Finder, a right-click inside the selection acts on all of it.
+    let targets = selection.contains(item.id) ? selectedItems : [item]
+    let ids = Set(targets.map(\.id))
+
+    if targets.count == 1 {
+      Button("Show on Desktop") {
+        controller.show(item)
+      }
+      .disabled(!item.isEnabled)
+    }
+
+    if targets.allSatisfy(\.isEnabled) {
+      Button("Exclude from Rotation") {
+        controller.setEnabled(false, for: ids)
+      }
+    } else {
+      Button("Include in Rotation") {
+        controller.setEnabled(true, for: ids)
+      }
+    }
+
+    Divider()
+
+    Button("Quick Look") {
+      if !selection.contains(item.id) {
+        selection = [item.id]
+        selectionAnchor = item.id
+      }
+      quickLookURL = controller.imageURL(for: item)
+    }
+
+    Button("Show in Finder") {
+      controller.reveal(ids)
+    }
+
+    Divider()
+
+    Button(targets.count == 1 ? "Delete…" : "Delete \(targets.count) Photos…", role: .destructive) {
+      pendingDeletion = ids
+    }
+  }
+
+  private var deletionTitle: String {
+    if pendingDeletion.count == 1,
+      let item = controller.items.first(where: { pendingDeletion.contains($0.id) })
+    {
+      return "Delete “\(item.displayName)”?"
+    }
+    return "Delete \(pendingDeletion.count) photos?"
+  }
+
+  private func select(_ item: WallpaperItem, modifiers: NSEvent.ModifierFlags) {
+    isGridFocused = true
+
+    if modifiers.contains(.command) {
+      selection.formSymmetricDifference([item.id])
+      selectionAnchor = item.id
+    } else if modifiers.contains(.shift),
+      let selectionAnchor,
+      let anchorIndex = visibleItems.firstIndex(where: { $0.id == selectionAnchor }),
+      let itemIndex = visibleItems.firstIndex(where: { $0.id == item.id })
+    {
+      let range = min(anchorIndex, itemIndex)...max(anchorIndex, itemIndex)
+      selection = Set(visibleItems[range].map(\.id))
+    } else {
+      selection = [item.id]
+      selectionAnchor = item.id
+    }
+  }
+
+  private func moveSelection(
+    _ direction: MoveCommandDirection,
+    columnCount: Int,
+    scrollProxy: ScrollViewProxy
+  ) {
+    let items = visibleItems
+    guard !items.isEmpty else { return }
+
+    let offset =
+      switch direction {
+      case .left: -1
+      case .right: 1
+      case .up: -columnCount
+      case .down: columnCount
+      @unknown default: 0
+      }
+    let targetIndex =
+      selectionAnchor
+      .flatMap { id in items.firstIndex { $0.id == id } }
+      .map { min(max($0 + offset, 0), items.count - 1) }
+      ?? 0
+    let target = items[targetIndex]
+
+    selection = [target.id]
+    selectionAnchor = target.id
+    scrollProxy.scrollTo(target.id)
+    if quickLookURL != nil {
+      quickLookURL = controller.imageURL(for: target)
+    }
+  }
+
+  private func toggleQuickLook() {
+    if quickLookURL != nil {
+      quickLookURL = nil
+    } else if let item = selectedItems.first(where: { $0.id == selectionAnchor })
+      ?? selectedItems.first
+    {
+      quickLookURL = controller.imageURL(for: item)
+    }
+  }
+
+  private func columnCount(for availableWidth: CGFloat) -> Int {
+    let fittingCount = Int(
+      (availableWidth + columnSpacing) / (minimumTileWidth + columnSpacing)
     )
+    return max(1, min(visibleItems.count, fittingCount))
   }
 }
