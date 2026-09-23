@@ -14,13 +14,16 @@ enum RotationPlanner {
 
     switch order {
     case .sequential:
+      // Search the whole library, so a last wallpaper that has since been
+      // excluded still marks where the sequence continues.
       guard
         let lastID,
-        let currentIndex = enabled.firstIndex(where: { $0.id == lastID })
+        let lastIndex = wallpapers.firstIndex(where: { $0.id == lastID })
       else {
         return enabled.first
       }
-      return enabled[(currentIndex + 1) % enabled.count]
+      let following = wallpapers[(lastIndex + 1)...] + wallpapers[...lastIndex]
+      return following.first(where: \.isEnabled)
     case .shuffled:
       let candidates: [WallpaperItem]
       if enabled.count > 1, let lastID {

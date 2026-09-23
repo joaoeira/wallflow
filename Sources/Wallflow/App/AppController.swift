@@ -124,11 +124,12 @@ final class AppController: ObservableObject {
       refreshItems()
 
       if !isEnabled, currentItemID == item.id {
-        currentItemID = nil
-        persistCurrentItem()
         if enabledItemCount > 0 {
+          // The planner continues from the now-excluded item's place.
           rotateNow()
         } else {
+          currentItemID = nil
+          persistCurrentItem()
           invalidateSchedule()
         }
       } else {
@@ -142,21 +143,21 @@ final class AppController: ObservableObject {
   func delete(_ item: WallpaperItem) {
     guard let libraryStore else { return }
 
+    // Move on before deleting, while the item still marks its place in the
+    // sequence and its image is still there for the fade to start from.
+    if currentItemID == item.id, items.contains(where: { $0.isEnabled && $0.id != item.id }) {
+      rotateNow()
+    }
+
     do {
-      let wasCurrent = currentItemID == item.id
       try libraryStore.delete(itemID: item.id)
       refreshItems()
 
-      if wasCurrent {
+      if currentItemID == item.id {
         currentItemID = nil
         persistCurrentItem()
       }
-
-      if wasCurrent, enabledItemCount > 0 {
-        rotateNow()
-      } else {
-        continueRotation()
-      }
+      continueRotation()
     } catch {
       present(error, title: "Couldn’t Delete Photo")
     }

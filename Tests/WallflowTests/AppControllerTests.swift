@@ -65,6 +65,24 @@ final class AppControllerTests: XCTestCase {
     XCTAssertEqual(controller.nextChangeDate, app.now.addingTimeInterval(30 * 60))
   }
 
+  func testRemovingTheCurrentPhotoContinuesTheSequence() throws {
+    let app = try TestApp(testCase: self)
+    let controller = app.launch()
+    controller.settings.order = .sequential
+    controller.importImages(
+      at: try ["A", "B", "C", "D"].map { try app.makeImageFile(named: $0) }
+    )
+    controller.rotateNow()
+    XCTAssertEqual(controller.currentItem?.displayName, "B")
+
+    controller.setEnabled(false, for: try XCTUnwrap(controller.currentItem))
+    XCTAssertEqual(controller.currentItem?.displayName, "C")
+
+    controller.delete(try XCTUnwrap(controller.currentItem))
+    XCTAssertEqual(controller.currentItem?.displayName, "D")
+    XCTAssertEqual(controller.items.map(\.displayName), ["A", "B", "D"])
+  }
+
   func testRelaunchingResumesTheSavedCountdown() throws {
     let app = try TestApp(testCase: self)
     let first = app.launch()

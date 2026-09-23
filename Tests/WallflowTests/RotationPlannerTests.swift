@@ -24,6 +24,20 @@ final class RotationPlannerTests: XCTestCase {
     XCTAssertEqual(afterThird?.id, first.id)
   }
 
+  func testSequentialRotationContinuesPastAnExcludedCurrentWallpaper() {
+    let first = WallpaperItem.fixture(name: "First")
+    let second = WallpaperItem.fixture(name: "Second", isEnabled: false)
+    let third = WallpaperItem.fixture(name: "Third")
+
+    let next = RotationPlanner.next(
+      from: [first, second, third],
+      after: second.id,
+      order: .sequential
+    )
+
+    XCTAssertEqual(next?.id, third.id)
+  }
+
   func testShuffleDoesNotImmediatelyRepeatWhenAnotherWallpaperIsEnabled() {
     let first = WallpaperItem.fixture(name: "First")
     let second = WallpaperItem.fixture(name: "Second")
