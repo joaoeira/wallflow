@@ -4,7 +4,18 @@ import Foundation
 import QuartzCore
 
 @MainActor
-final class WallpaperTransitionCoordinator {
+protocol WallpaperApplying: AnyObject {
+  func apply(
+    imageURL: URL,
+    previousImageURL: URL?,
+    scaling: WallpaperScaling,
+    target: DisplayTarget,
+    animated: Bool
+  ) throws
+}
+
+@MainActor
+final class WallpaperTransitionCoordinator: WallpaperApplying {
   private final class ActiveTransition {
     let id = UUID()
     let windows: [NSWindow]

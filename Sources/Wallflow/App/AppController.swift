@@ -27,7 +27,8 @@ final class AppController: ObservableObject {
   let libraryDirectoryURL: URL
 
   private let defaults: UserDefaults
-  private let transitionCoordinator = WallpaperTransitionCoordinator()
+  private let wallpaperApplier: WallpaperApplying
+  private let now: () -> Date
   private var libraryStore: WallpaperLibraryStore?
   private var timer: Timer?
   private var hasStarted = false
@@ -37,9 +38,13 @@ final class AppController: ObservableObject {
 
   init(
     libraryDirectoryURL: URL? = nil,
-    defaults: UserDefaults = .standard
+    defaults: UserDefaults = .standard,
+    wallpaperApplier: WallpaperApplying? = nil,
+    now: @escaping () -> Date = Date.init
   ) {
     self.defaults = defaults
+    self.wallpaperApplier = wallpaperApplier ?? WallpaperTransitionCoordinator()
+    self.now = now
     settings = Self.loadSettings(from: defaults)
     currentItemID = defaults.string(forKey: Self.currentItemKey).flatMap(UUID.init(uuidString:))
     launchAtLoginEnabled = LaunchAtLoginManager.isEnabled
@@ -199,7 +204,7 @@ final class AppController: ObservableObject {
   private func apply(item: WallpaperItem, from store: WallpaperLibraryStore) {
     do {
       let previousImageURL = currentItem.map(store.fileURL(for:))
-      try transitionCoordinator.apply(
+      try wallpaperApplier.apply(
         imageURL: store.fileURL(for: item),
         previousImageURL: previousImageURL,
         scaling: settings.scaling,
@@ -257,7 +262,7 @@ final class AppController: ObservableObject {
     }
 
     let interval = max(60, settings.intervalSeconds)
-    let fireDate = Date().addingTimeInterval(interval)
+    let fireDate = now().addingTimeInterval(interval)
     nextChangeDate = fireDate
 
     let timer = Timer(fire: fireDate, interval: 0, repeats: false) { [weak self] _ in
