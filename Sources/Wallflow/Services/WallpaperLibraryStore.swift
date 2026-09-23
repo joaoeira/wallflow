@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 final class WallpaperLibraryStore {
   private let fileManager: FileManager
@@ -30,13 +31,15 @@ final class WallpaperLibraryStore {
     }
   }
 
+  /// Copies the image files among `sourceURLs` into the library, skipping
+  /// anything that isn't an image, such as folders or documents.
   @discardableResult
   func importImages(at sourceURLs: [URL]) throws -> [WallpaperItem] {
     var imported: [WallpaperItem] = []
     let previousItems = items
 
     do {
-      for sourceURL in sourceURLs {
+      for sourceURL in sourceURLs where Self.isImageFile(sourceURL) {
         let fileExtension = sourceURL.pathExtension.lowercased()
         let fileName = UUID().uuidString + (fileExtension.isEmpty ? "" : ".\(fileExtension)")
         let item = WallpaperItem(
@@ -105,6 +108,15 @@ final class WallpaperLibraryStore {
       }
       throw error
     }
+  }
+
+  private static func isImageFile(_ url: URL) -> Bool {
+    guard
+      let contentType = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType
+    else {
+      return false
+    }
+    return contentType.conforms(to: .image)
   }
 
   private func save() throws {

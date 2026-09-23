@@ -99,19 +99,23 @@ final class AppController: ObservableObject {
     }
   }
 
-  func importImages(at urls: [URL]) {
-    guard let libraryStore, !urls.isEmpty else { return }
+  /// Returns whether any of `urls` was added; files that aren't images are skipped.
+  @discardableResult
+  func importImages(at urls: [URL]) -> Bool {
+    guard let libraryStore, !urls.isEmpty else { return false }
 
     do {
-      _ = try libraryStore.importImages(at: urls)
+      guard try !libraryStore.importImages(at: urls).isEmpty else { return false }
       refreshItems()
       if settings.rotationEnabled, currentItem == nil {
         rotateNow()
       } else if settings.rotationEnabled, timer == nil {
         scheduleNextChange()
       }
+      return true
     } catch {
       present(error, title: "Couldn’t Add Photos")
+      return false
     }
   }
 

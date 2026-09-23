@@ -28,6 +28,31 @@ final class WallpaperLibraryStoreTests: XCTestCase {
     XCTAssertEqual(reloaded.items, imported)
   }
 
+  func testImportSkipsFilesThatAreNotImages() throws {
+    let fileManager = FileManager.default
+    let testRoot = fileManager.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let imageURL = testRoot.appendingPathComponent("Source.jpg")
+    let documentURL = testRoot.appendingPathComponent("Notes.txt")
+    let folderURL = testRoot.appendingPathComponent("Folder", isDirectory: true)
+    try fileManager.createDirectory(at: folderURL, withIntermediateDirectories: true)
+    try Data("image bytes".utf8).write(to: imageURL)
+    try Data("notes".utf8).write(to: documentURL)
+    try Data("image bytes".utf8).write(to: folderURL.appendingPathComponent("Nested.jpg"))
+    defer { try? fileManager.removeItem(at: testRoot) }
+
+    let libraryURL = testRoot.appendingPathComponent("Library")
+    let library = try WallpaperLibraryStore(rootDirectory: libraryURL)
+    let imported = try library.importImages(at: [imageURL, documentURL, folderURL])
+
+    XCTAssertEqual(imported.map(\.displayName), ["Source"])
+    XCTAssertEqual(library.items, imported)
+    XCTAssertEqual(
+      try fileManager.contentsOfDirectory(atPath: libraryURL.appendingPathComponent("Images").path),
+      [imported[0].fileName]
+    )
+  }
+
   func testEnabledStatePersistsAcrossReload() throws {
     let fileManager = FileManager.default
     let testRoot = fileManager.temporaryDirectory

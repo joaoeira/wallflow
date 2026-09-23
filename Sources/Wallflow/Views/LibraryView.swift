@@ -90,8 +90,7 @@ struct LibraryView: View {
     }
     .background(isDropTargeted ? Color.accentColor.opacity(0.08) : Color.clear)
     .dropDestination(for: URL.self) { urls, _ in
-      controller.importImages(at: urls.filter { $0.isFileURL })
-      return true
+      controller.importImages(at: urls)
     } isTargeted: { targeted in
       isDropTargeted = targeted
     }
