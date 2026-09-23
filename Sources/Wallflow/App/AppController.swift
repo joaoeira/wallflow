@@ -204,10 +204,8 @@ final class AppController: ObservableObject {
 
   private func apply(item: WallpaperItem, from store: WallpaperLibraryStore) {
     do {
-      let previousImageURL = currentItem.map(store.fileURL(for:))
       try wallpaperApplier.apply(
         imageURL: store.fileURL(for: item),
-        previousImageURL: previousImageURL,
         scaling: settings.scaling,
         target: settings.displayTarget,
         animated: settings.smoothTransitions

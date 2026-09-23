@@ -83,6 +83,30 @@ enum WallpaperScaling: String, Codable, CaseIterable, Identifiable {
     case .fit, .stretch: false
     }
   }
+
+  var desktopImageOptions: [NSWorkspace.DesktopImageOptionKey: Any] {
+    [
+      .imageScaling: NSNumber(value: imageScaling.rawValue),
+      .allowClipping: NSNumber(value: allowsClipping),
+      .fillColor: NSColor.black,
+    ]
+  }
+
+  /// Reads back the scaling a screen's desktop picture was set with.
+  init?(desktopImageOptions options: [NSWorkspace.DesktopImageOptionKey: Any]) {
+    guard
+      let rawScaling = (options[.imageScaling] as? NSNumber)?.uintValue,
+      let imageScaling = NSImageScaling(rawValue: rawScaling)
+    else { return nil }
+    let allowsClipping = (options[.allowClipping] as? NSNumber)?.boolValue ?? false
+
+    switch imageScaling {
+    case .scaleProportionallyUpOrDown: self = allowsClipping ? .fill : .fit
+    case .scaleAxesIndependently: self = .stretch
+    case .scaleNone: self = .center
+    default: return nil
+    }
+  }
 }
 
 enum DisplayTarget: String, Codable, CaseIterable, Identifiable {

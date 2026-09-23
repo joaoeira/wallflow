@@ -191,7 +191,6 @@ private final class RecordingWallpaperApplier: WallpaperApplying {
 
   func apply(
     imageURL: URL,
-    previousImageURL: URL?,
     scaling: WallpaperScaling,
     target: DisplayTarget,
     animated: Bool

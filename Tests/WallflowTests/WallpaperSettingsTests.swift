@@ -19,4 +19,10 @@ final class WallpaperSettingsTests: XCTestCase {
     XCTAssertTrue(settings.smoothTransitions)
     XCTAssertTrue(settings.showsMenuBarIcon)
   }
+
+  func testScalingRoundTripsThroughDesktopImageOptions() {
+    for scaling in WallpaperScaling.allCases {
+      XCTAssertEqual(WallpaperScaling(desktopImageOptions: scaling.desktopImageOptions), scaling)
+    }
+  }
 }

@@ -7,19 +7,11 @@ enum WallpaperSetter {
     scaling: WallpaperScaling,
     target: DisplayTarget
   ) throws {
-    let screens = screens(for: target)
-
-    let options: [NSWorkspace.DesktopImageOptionKey: Any] = [
-      .imageScaling: NSNumber(value: scaling.imageScaling.rawValue),
-      .allowClipping: NSNumber(value: scaling.allowsClipping),
-      .fillColor: NSColor.black,
-    ]
-
-    for screen in screens {
+    for screen in screens(for: target) {
       try NSWorkspace.shared.setDesktopImageURL(
         imageURL,
         for: screen,
-        options: options
+        options: scaling.desktopImageOptions
       )
     }
   }

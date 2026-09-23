@@ -7,7 +7,6 @@ import QuartzCore
 protocol WallpaperApplying: AnyObject {
   func apply(
     imageURL: URL,
-    previousImageURL: URL?,
     scaling: WallpaperScaling,
     target: DisplayTarget,
     animated: Bool
@@ -37,7 +36,6 @@ final class WallpaperTransitionCoordinator: WallpaperApplying {
 
   func apply(
     imageURL: URL,
-    previousImageURL: URL?,
     scaling: WallpaperScaling,
     target: DisplayTarget,
     animated: Bool
@@ -55,25 +53,15 @@ final class WallpaperTransitionCoordinator: WallpaperApplying {
       animationSuppressedUntil = now.addingTimeInterval(fadeDuration)
     }
 
-    guard
-      mayAnimate,
-      let previousImageURL,
-      previousImageURL != imageURL,
-      let previousImage = NSImage(contentsOf: previousImageURL),
-      let newImage = NSImage(contentsOf: imageURL)
-    else {
+    let windows =
+      mayAnimate
+      ? makeOverlayWindows(incomingImageURL: imageURL, scaling: scaling, target: target)
+      : []
+    guard !windows.isEmpty else {
       try WallpaperSetter.apply(imageURL: imageURL, scaling: scaling, target: target)
       return
     }
 
-    let windows = WallpaperSetter.screens(for: target).map { screen in
-      makeOverlayWindow(
-        for: screen,
-        outgoingImage: previousImage,
-        incomingImage: newImage,
-        scaling: scaling
-      )
-    }
     let transition = ActiveTransition(windows: windows)
     activeTransition = transition
     animationSuppressedUntil = now.addingTimeInterval(fadeDuration)
@@ -108,11 +96,47 @@ final class WallpaperTransitionCoordinator: WallpaperApplying {
     }
   }
 
+  /// Builds an overlay for each target screen that needs one, fading from
+  /// whatever that screen shows now, which need not be Wallflow's last
+  /// wallpaper. Screens already showing the image, or showing something that
+  /// can't be loaded, get no overlay and simply switch.
+  private func makeOverlayWindows(
+    incomingImageURL: URL,
+    scaling: WallpaperScaling,
+    target: DisplayTarget
+  ) -> [NSWindow] {
+    var loadedImages: [URL: NSImage?] = [:]
+    func image(at url: URL) -> NSImage? {
+      if let loaded = loadedImages[url] { return loaded }
+      let image = NSImage(contentsOf: url)
+      loadedImages[url] = image
+      return image
+    }
+
+    guard let incomingImage = image(at: incomingImageURL) else { return [] }
+
+    return WallpaperSetter.screens(for: target).compactMap { screen in
+      guard
+        let outgoingImageURL = NSWorkspace.shared.desktopImageURL(for: screen),
+        outgoingImageURL.standardizedFileURL.path != incomingImageURL.standardizedFileURL.path,
+        let outgoingImage = image(at: outgoingImageURL)
+      else { return nil }
+
+      let outgoingScaling =
+        NSWorkspace.shared.desktopImageOptions(for: screen)
+        .flatMap(WallpaperScaling.init(desktopImageOptions:)) ?? scaling
+      return makeOverlayWindow(
+        for: screen,
+        outgoing: (outgoingImage, outgoingScaling),
+        incoming: (incomingImage, scaling)
+      )
+    }
+  }
+
   private func makeOverlayWindow(
     for screen: NSScreen,
-    outgoingImage: NSImage,
-    incomingImage: NSImage,
-    scaling: WallpaperScaling
+    outgoing: (image: NSImage, scaling: WallpaperScaling),
+    incoming: (image: NSImage, scaling: WallpaperScaling)
   ) -> NSWindow {
     // screen.frame is in global coordinates; the screen-relative initializer
     // variant would double-offset the window on secondary displays.
@@ -124,9 +148,8 @@ final class WallpaperTransitionCoordinator: WallpaperApplying {
     )
     window.contentView = WallpaperCrossfadeView(
       frame: NSRect(origin: .zero, size: screen.frame.size),
-      outgoingImage: outgoingImage,
-      incomingImage: incomingImage,
-      scaling: scaling
+      outgoing: outgoing,
+      incoming: incoming
     )
     window.level = NSWindow.Level(
       rawValue: Int(CGWindowLevelForKey(.desktopWindow)) + 1
@@ -184,23 +207,22 @@ private final class WallpaperCrossfadeView: NSView {
 
   init(
     frame: NSRect,
-    outgoingImage: NSImage,
-    incomingImage: NSImage,
-    scaling: WallpaperScaling
+    outgoing: (image: NSImage, scaling: WallpaperScaling),
+    incoming: (image: NSImage, scaling: WallpaperScaling)
   ) {
     let contentBounds = NSRect(origin: .zero, size: frame.size)
-    let outgoing = WallpaperImageView(
-      frame: contentBounds, image: outgoingImage, scaling: scaling
+    let outgoingView = WallpaperImageView(
+      frame: contentBounds, image: outgoing.image, scaling: outgoing.scaling
     )
-    let incoming = WallpaperImageView(
-      frame: contentBounds, image: incomingImage, scaling: scaling
+    let incomingView = WallpaperImageView(
+      frame: contentBounds, image: incoming.image, scaling: incoming.scaling
     )
-    incomingView = incoming
+    self.incomingView = incomingView
     super.init(frame: frame)
     wantsLayer = true
-    addSubview(outgoing)
-    addSubview(incoming)
-    incoming.alphaValue = 0
+    addSubview(outgoingView)
+    addSubview(incomingView)
+    incomingView.alphaValue = 0
   }
 
   @available(*, unavailable)
