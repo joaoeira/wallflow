@@ -43,7 +43,7 @@ struct SettingsView: View {
 
             settingsRow("Change wallpaper") {
               Picker("Change wallpaper", selection: $controller.settings.intervalSeconds) {
-                ForEach(Self.intervals) { interval in
+                ForEach(intervalChoices) { interval in
                   Text(interval.title).tag(interval.seconds)
                 }
               }
@@ -167,6 +167,24 @@ struct SettingsView: View {
       .frame(maxWidth: 680)
       .frame(maxWidth: .infinity)
     }
+  }
+
+  /// The preset intervals, plus the saved one if it isn't a preset (from an
+  /// older version or edited defaults), so the picker never shows blank.
+  private var intervalChoices: [IntervalChoice] {
+    let seconds = controller.settings.intervalSeconds
+    guard !Self.intervals.contains(where: { $0.seconds == seconds }) else {
+      return Self.intervals
+    }
+
+    let formatter = DateComponentsFormatter()
+    formatter.allowedUnits = [.day, .hour, .minute, .second]
+    formatter.unitsStyle = .full
+    let custom = IntervalChoice(
+      seconds: seconds,
+      title: "Every \(formatter.string(from: seconds) ?? "\(Int(seconds)) seconds")"
+    )
+    return (Self.intervals + [custom]).sorted { $0.seconds < $1.seconds }
   }
 
   private func settingsRow<Content: View>(
