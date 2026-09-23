@@ -89,14 +89,7 @@ final class AppController: ObservableObject {
   func start() {
     guard !hasStarted else { return }
     hasStarted = true
-
-    if settings.rotationEnabled {
-      if currentItem?.isEnabled != true, enabledItemCount > 0 {
-        rotateNow()
-      } else {
-        scheduleNextChange()
-      }
-    }
+    continueRotation()
   }
 
   /// Returns whether any of `urls` was added; files that aren't images are skipped.
@@ -107,11 +100,7 @@ final class AppController: ObservableObject {
     do {
       guard try !libraryStore.importImages(at: urls).isEmpty else { return false }
       refreshItems()
-      if settings.rotationEnabled, currentItem == nil {
-        rotateNow()
-      } else {
-        continueRotation()
-      }
+      continueRotation()
       return true
     } catch {
       present(error, title: "Couldn’t Add Photos")
@@ -251,14 +240,17 @@ final class AppController: ObservableObject {
     }
   }
 
-  /// Brings the schedule in line with the library and settings without
-  /// restarting a countdown that is already running.
+  /// Brings rotation in line with the library and settings: shows an
+  /// enabled photo if none is on screen, without restarting a countdown that
+  /// is already running.
   private func continueRotation() {
     guard settings.rotationEnabled, enabledItemCount > 0 else {
       invalidateSchedule()
       return
     }
-    if timer == nil {
+    if currentItem?.isEnabled != true {
+      rotateNow()
+    } else if timer == nil {
       scheduleNextChange()
     }
   }

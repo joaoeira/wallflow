@@ -48,6 +48,21 @@ final class AppControllerTests: XCTestCase {
     XCTAssertEqual(controller.nextChangeDate, countdown)
     XCTAssertEqual(app.applier.applications.count, 1)
   }
+
+  func testEnablingAPhotoWhenNoneWereEnabledShowsItImmediately() throws {
+    let app = try TestApp(testCase: self)
+    let controller = app.launch()
+    controller.importImages(at: [try app.makeImageFile(named: "Beach")])
+    let beach = try XCTUnwrap(controller.currentItem)
+    controller.setEnabled(false, for: beach)
+    XCTAssertNil(controller.nextChangeDate)
+
+    controller.setEnabled(true, for: beach)
+
+    XCTAssertEqual(controller.currentItemID, beach.id)
+    XCTAssertEqual(app.applier.applications.count, 2)
+    XCTAssertEqual(controller.nextChangeDate, app.now.addingTimeInterval(30 * 60))
+  }
 }
 
 @MainActor
