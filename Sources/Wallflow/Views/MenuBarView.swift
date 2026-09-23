@@ -4,6 +4,7 @@ import SwiftUI
 struct MenuBarView: View {
   @ObservedObject var controller: AppController
   @Environment(\.openWindow) private var openWindow
+  @Environment(\.openSettings) private var openSettings
 
   var body: some View {
     if let current = controller.currentItem {
@@ -29,6 +30,12 @@ struct MenuBarView: View {
     Button("Show Photo Library", systemImage: "folder") {
       controller.revealLibrary()
     }
+
+    Button("Settings…", systemImage: "gearshape") {
+      NSApp.activate(ignoringOtherApps: true)
+      openSettings()
+    }
+    .keyboardShortcut(",")
 
     Divider()
 

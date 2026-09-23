@@ -52,7 +52,8 @@ struct WallflowApp: App {
 
     Settings {
       SettingsView(controller: controller)
-        .frame(width: 560, height: 540)
+        .frame(width: 480)
+        .fixedSize(horizontal: false, vertical: true)
     }
   }
 
