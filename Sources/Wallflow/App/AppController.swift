@@ -228,16 +228,6 @@ final class AppController: ObservableObject {
   }
 
   private func respondToSettingsChange(from oldSettings: WallpaperSettings) {
-    if !settings.rotationEnabled {
-      invalidateSchedule()
-      return
-    }
-
-    if currentItem?.isEnabled != true, enabledItemCount > 0 {
-      rotateNow()
-      return
-    }
-
     let presentationChanged =
       settings.scaling != oldSettings.scaling
       || settings.displayTarget != oldSettings.displayTarget
@@ -245,8 +235,13 @@ final class AppController: ObservableObject {
       settings.rotationEnabled != oldSettings.rotationEnabled
       || settings.intervalSeconds != oldSettings.intervalSeconds
 
-    if presentationChanged, let currentItem, let libraryStore {
+    if settings.rotationEnabled, currentItem?.isEnabled != true, enabledItemCount > 0 {
+      rotateNow()
+    } else if presentationChanged, let currentItem, let libraryStore {
+      // Presentation applies to the wallpaper on screen, paused or not.
       apply(item: currentItem, from: libraryStore)
+    } else if !settings.rotationEnabled {
+      invalidateSchedule()
     } else if scheduleChanged {
       scheduleNextChange()
     }

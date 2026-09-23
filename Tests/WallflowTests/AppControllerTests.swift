@@ -14,6 +14,22 @@ final class AppControllerTests: XCTestCase {
     XCTAssertEqual(app.applier.shownFileNames, [controller.currentItem?.fileName])
     XCTAssertEqual(controller.nextChangeDate, app.now.addingTimeInterval(30 * 60))
   }
+
+  func testChangingPresentationWhilePausedReappliesCurrentWallpaper() throws {
+    let app = try TestApp(testCase: self)
+    let controller = app.launch()
+    controller.importImages(at: [try app.makeImageFile(named: "Beach")])
+    controller.settings.rotationEnabled = false
+
+    controller.settings.scaling = .fit
+    controller.settings.displayTarget = .mainDisplay
+
+    XCTAssertEqual(app.applier.applications.count, 3)
+    XCTAssertEqual(app.applier.applications.last?.scaling, .fit)
+    XCTAssertEqual(app.applier.applications.last?.target, .mainDisplay)
+    XCTAssertEqual(controller.currentItem?.displayName, "Beach")
+    XCTAssertNil(controller.nextChangeDate)
+  }
 }
 
 @MainActor
