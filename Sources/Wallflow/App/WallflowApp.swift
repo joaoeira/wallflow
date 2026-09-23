@@ -5,7 +5,7 @@ struct WallflowApp: App {
   @StateObject private var controller: AppController
 
   init() {
-    let controller = AppController()
+    let controller = AppController.forCurrentLaunch()
     _controller = StateObject(wrappedValue: controller)
     // Rotation runs from launch, whether or not the main window is ever shown
     // (for example after a login launch or a restored, closed window).
